@@ -1,7 +1,10 @@
 """
 streamlit.py
 Sandy’s Law – Live Simulation Dashboard
-Includes NORMALIZED GR vs Sandy’s Law comparison
+Includes:
+- Nonlinear entropy dynamics (via sim.py)
+- Normalized GR vs Sandy comparison
+- Automatic portal-crossing marker
 """
 
 import streamlit as st
@@ -62,6 +65,19 @@ data = sim.run(
 df = pd.DataFrame(data)
 
 # --------------------
+# PORTAL CROSSING DETECTION
+# --------------------
+portal_threshold = engine.portal_threshold
+
+cross_idx = None
+for i in range(len(df)):
+    if df.loc[i, "portal_score"] >= portal_threshold:
+        cross_idx = i
+        break
+
+portal_time = df.loc[cross_idx, "time"] if cross_idx is not None else None
+
+# --------------------
 # MAIN DISPLAY
 # --------------------
 st.title("Sandy’s Law Engine — Live Simulation")
@@ -89,15 +105,16 @@ st.subheader("Proper Time (Normalized): GR vs Sandy’s Law")
 
 norm_df = df.copy()
 
-# Normalize both curves independently
 norm_df["GR (normalized)"] = norm_df["tau_gr"] / norm_df["tau_gr"].max()
 norm_df["Sandy (normalized)"] = (
     norm_df["tau_rate"] / max(norm_df["tau_rate"].max(), 1e-9)
 )
 
-st.line_chart(
-    norm_df.set_index("time")[["GR (normalized)", "Sandy (normalized)"]]
-)
+chart_df = norm_df.set_index("time")[["GR (normalized)", "Sandy (normalized)"]]
+st.line_chart(chart_df)
+
+if portal_time is not None:
+    st.caption(f"🔴 Portal opens at t ≈ {portal_time:.3f}")
 
 # --------------------
 # FINAL REGIME SUMMARY
