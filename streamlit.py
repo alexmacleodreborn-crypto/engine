@@ -1,10 +1,12 @@
 """
 streamlit.py
 Sandy’s Law – Live Simulation Dashboard
+
 Includes:
 - Nonlinear entropy dynamics (via sim.py)
 - Normalized GR vs Sandy comparison
 - Automatic portal-crossing marker
+- Supernova Core Collapse preset
 """
 
 import streamlit as st
@@ -36,16 +38,46 @@ st.markdown(
 )
 
 # --------------------
-# SIDEBAR CONTROLS
+# SIDEBAR – PRESETS
 # --------------------
 st.sidebar.title("Sandy’s Law Controls")
 
-Z0 = st.sidebar.slider("Initial Trap Strength Z", 0.0, 1.0, 0.98, 0.01)
-Sigma0 = st.sidebar.slider("Entropy Export Σ", 0.0, 5.0, 0.05, 0.01)
-entropy_start = st.sidebar.slider("Entropy Gradient Start", 0.0, 5.0, 0.0, 0.1)
-entropy_end = st.sidebar.slider("Entropy Gradient End", 0.0, 10.0, 5.0, 0.1)
-steps = st.sidebar.slider("Simulation Steps", 50, 500, 200, 50)
-soften_Z = st.sidebar.checkbox("Trap Softening Enabled", True)
+st.sidebar.subheader("Presets")
+preset = st.sidebar.selectbox(
+    "Select system preset",
+    ["Custom", "Supernova Core Collapse"],
+)
+
+# --------------------
+# SIDEBAR – PARAMETERS
+# --------------------
+if preset == "Supernova Core Collapse":
+    # Physically motivated SN core-collapse values
+    Z0 = 0.995            # extremely trapped iron core
+    Sigma0 = 0.01         # neutrino trapping
+    entropy_start = 0.0
+    entropy_end = 6.0     # rapid heating at bounce
+    steps = 300
+    soften_Z = True
+
+    st.sidebar.markdown(
+        """
+        **Supernova Core Collapse preset active**
+
+        • Near-total confinement  
+        • Suppressed entropy escape  
+        • Nonlinear neutrino release  
+        • Shock revival via portal opening
+        """
+    )
+
+else:
+    Z0 = st.sidebar.slider("Initial Trap Strength Z", 0.0, 1.0, 0.98, 0.01)
+    Sigma0 = st.sidebar.slider("Entropy Export Σ", 0.0, 5.0, 0.05, 0.01)
+    entropy_start = st.sidebar.slider("Entropy Gradient Start", 0.0, 5.0, 0.0, 0.1)
+    entropy_end = st.sidebar.slider("Entropy Gradient End", 0.0, 10.0, 5.0, 0.1)
+    steps = st.sidebar.slider("Simulation Steps", 50, 500, 200, 50)
+    soften_Z = st.sidebar.checkbox("Trap Softening Enabled", True)
 
 # --------------------
 # ENGINE + SIMULATION
@@ -104,14 +136,14 @@ with col2:
 st.subheader("Proper Time (Normalized): GR vs Sandy’s Law")
 
 norm_df = df.copy()
-
 norm_df["GR (normalized)"] = norm_df["tau_gr"] / norm_df["tau_gr"].max()
 norm_df["Sandy (normalized)"] = (
     norm_df["tau_rate"] / max(norm_df["tau_rate"].max(), 1e-9)
 )
 
-chart_df = norm_df.set_index("time")[["GR (normalized)", "Sandy (normalized)"]]
-st.line_chart(chart_df)
+st.line_chart(
+    norm_df.set_index("time")[["GR (normalized)", "Sandy (normalized)"]]
+)
 
 if portal_time is not None:
     st.caption(f"🔴 Portal opens at t ≈ {portal_time:.3f}")
