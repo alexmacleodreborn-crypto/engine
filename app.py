@@ -139,17 +139,7 @@ with st.sidebar:
     st.caption(f"Week {round(tick/80)} · {organism_state(tick)['stage']}")
     st.divider()
 
-    pages = [
-        "🏠 Mission Control",
-        "📈 Growth Timeline",
-        "🧬 Biology",
-        "🧠 Cognition & Phase 4",
-        "🔄 Learning Loop",
-        "🌍 World & Social",
-        "⚙️ Engines & Runtime",
-        "✨ Phase 7 — Wisdom",
-        "📊 All Sheets Explorer",
-    ]
+    
     page = st.radio("Navigate", pages, label_visibility="collapsed")
     st.divider()
     st.markdown("**Source files merged:**")
@@ -284,7 +274,7 @@ if page == "🏠 Mission Control":
         "🧠 Mind & Cognition":"Cognition","🗣️ Language Grounding":"Phase 4","🧠 Theory of Mind":"Phase 4",
         "🔮 Predictive Simulation":"Phase 4","🗺️ Scene Graph & Places":"Phase 4",
         "👁️ Object Permanence":"Phase 3","🦴 Proprioception (P1)":"Phase 3",
-        "💾 Episodic Memory (P3)":"Phase 3","🎯 Value System (P4)":"Phase 3","🦾 Motor Planning (P6)":"Phase 3",
+        "💾 Episodic Memory (P3)":"Phase 3","🎯 Value System (P4)":"Phase 3","🦾 Motor Planning (P6)":"Phase 3","🦿 Movement Engine":"Phase 3",
         "🌍 World Systems":"World","🗺️ World Data":"World","📐 World & Space":"World",
         "🏥 Immersive Places":"World","👥 NPC Engine":"Social",
         "🔗 System Connections":"Meta","🔗 System Integration":"Meta",
@@ -654,9 +644,7 @@ elif page == "🔄 Learning Loop":
     df = sheet_to_df("🔄 Learning Loop")
     st.dataframe(df, use_container_width=True, hide_index=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PAGE: WORLD & SOCIAL
-# ═══════════════════════════════════════════════════════════════════════════════
+
 elif page == "🌍 World & Social":
     st.title("🌍 World & Social — BeenFore City")
 
