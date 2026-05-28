@@ -6,13 +6,13 @@ Streamlit application covering all 36 sheets and 7 developmental phases.
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 import openpyxl
 import math
-import json
 from pathlib import Path
 
-# ── Page config ───────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────────────
+# PAGE CONFIG
+# ───────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="A7DO Genesis Mind",
     page_icon="🧬",
@@ -20,8 +20,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Load workbook ─────────────────────────────────────────────────────────────
-XLSX = Path("excel_report/a7do-final/A7DO_DNA_Master_v5_FINAL.xlsx")
+# ───────────────────────────────────────────────────────────────────────────────
+# LOAD WORKBOOK (Excel file in repo root)
+# ───────────────────────────────────────────────────────────────────────────────
+XLSX = Path("A7DO_DNA_Master_v5_FINAL.xlsx")
 
 @st.cache_resource
 def load_workbook():
@@ -43,7 +45,9 @@ def sheet_to_df(sheet_name, header_row=None):
         return pd.DataFrame(data, columns=cols)
     return pd.DataFrame(rows)
 
-# ── Organism formulas (pure Python — tick-driven) ─────────────────────────────
+# ───────────────────────────────────────────────────────────────────────────────
+# ORGANISM STATE ENGINE
+# ───────────────────────────────────────────────────────────────────────────────
 def organism_state(tick):
     week = round(tick / 80)
     height = 50 if week < 40 else min(50 + (177-50)*(1-math.exp(-0.005*(week-40))), 177)
@@ -56,6 +60,7 @@ def organism_state(tick):
     birth  = tick >= 3200
     phase7 = tick >= 96000
     wisdom = min(0.1+((week-1200)/800)*0.9, 1.0) if week >= 1200 else 0.0
+
     if   week >= 1200: stage = "Mature Adult"
     elif week >= 1100: stage = "Mid Adult"
     elif week >= 1000: stage = "Adult"
@@ -70,20 +75,28 @@ def organism_state(tick):
     elif week >= 12:   stage = "Fetal Mid"
     elif week >= 4:    stage = "Fetal Early"
     else:              stage = "Embryo"
+
     if tick % 800 == 0:  ll_phase = "💤 Sleep Consolidation"
     elif tick % 10 == 0: ll_phase = "🔁 Repetition"
     elif tick % 5 == 0:  ll_phase = "🤝 Interaction"
     else:                ll_phase = "👁️ Exposure"
-    C = min(0.05 + week/3000, 1.0)
-    pred_err = max(0.1, 1.0 * math.exp(-0.0001*tick))
-    ltm = min(int(tick * 0.96), 200000)
-    return dict(tick=tick, week=week, stage=stage, height=round(height,1),
-                mass=round(mass,2), hr=round(hr,1), vocab=vocab,
-                motor=motor, tom=tom, perm=perm, birth=birth,
-                phase7=phase7, wisdom=round(wisdom,3), ll_phase=ll_phase,
-                C=round(C,3), pred_err=round(pred_err,3), ltm=ltm)
 
-# ── CSS ───────────────────────────────────────────────────────────────────────
+    C = min(0.05 + week/3000, 1.0)
+    pred_err = max(0.1, math.exp(-0.0001*tick))
+    ltm = min(int(tick * 0.96), 200000)
+
+    return dict(
+        tick=tick, week=week, stage=stage,
+        height=round(height,1), mass=round(mass,2), hr=round(hr,1),
+        vocab=vocab, motor=motor, tom=tom, perm=perm,
+        birth=birth, phase7=phase7, wisdom=round(wisdom,3),
+        ll_phase=ll_phase, C=round(C,3), pred_err=round(pred_err,3),
+        ltm=ltm
+    )
+
+# ───────────────────────────────────────────────────────────────────────────────
+# CSS
+# ───────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 [data-testid="stSidebar"] { background: #0d1117; }
@@ -98,14 +111,6 @@ st.markdown("""
 }
 .metric-val { font-size: 2rem; font-weight: 700; color: #60a5fa; }
 .metric-lbl { font-size: 0.75rem; color: #9ca3af; margin-top: 4px; }
-.phase-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    margin: 2px;
-}
 .section-hdr {
     font-size: 1.1rem; font-weight: 700;
     border-left: 4px solid #60a5fa;
@@ -115,7 +120,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Page list (navigation) ─────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────────────
+# PAGE LIST
+# ───────────────────────────────────────────────────────────────────────────────
 pages = [
     "🏠 Mission Control",
     "📈 Growth Timeline",
@@ -124,18 +131,65 @@ pages = [
     "🔄 Learning Loop"
 ]
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────────────
+# SIDEBAR
+# ───────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🧬 A7DO Genesis Mind")
-    st.markdown("**v5 FINAL · 36 sheets · 337 formulas**")
+    st.markdown("v5 FINAL · 36 sheets · 337 formulas")
     st.divider()
 
-    tick = st.slider("⚡ Current Tick", 0, 160000, 10000, step=80,
-                     help="Drag to advance A7DO through its entire lifecycle")
+    tick = st.slider("⚡ Current Tick", 0, 160000, 10000, step=80)
     st.caption(f"Week {round(tick/80)} · {organism_state(tick)['stage']}")
     st.divider()
 
     page = st.radio("Navigate", pages, label_visibility="collapsed")
     st.divider()
 
-    st.markdown("**
+    st.markdown("**Source files merged:**")
+    st.markdown("- Consolidated v17 (18 sheets)")
+    st.markdown("- Master v3 (5 sheets)")
+    st.markdown("- Consolidated v9 (5 sheets)")
+    st.markdown("- Phase 7 NEW (4 sheets)")
+    st.markdown("- Learning Loop + Spec (2 sheets)")
+
+state = organism_state(tick)
+
+# ───────────────────────────────────────────────────────────────────────────────
+# PAGE: MISSION CONTROL
+# ───────────────────────────────────────────────────────────────────────────────
+if page == "🏠 Mission Control":
+    st.title("🧬 A7DO Genesis Mind — Mission Control")
+    st.caption(f"Tick {tick:,} · Week {state['week']} · {state['stage']} · Learning Loop: {state['ll_phase']}")
+
+    if state['phase7']:
+        st.success("🌟 PHASE 7 ACTIVE — Creative Synthesis · Wisdom Index · Career · Legacy engines online")
+    elif state['birth']:
+        st.info(f"🔄 Learning Loop active — {state['ll_phase']}")
+    else:
+        st.warning("⏳ Prenatal — Birth at Tick 3,200")
+
+    cols = st.columns(8)
+    metrics = [
+        ("Height", f"{state['height']} cm", "📏"),
+        ("Mass",   f"{state['mass']} kg",   "⚖️"),
+        ("Heart Rate", f"{state['hr']} bpm","❤️"),
+        ("Vocabulary", f"{state['vocab']:,}","💬"),
+        ("Motor Stage", f"{state['motor']}/5","🦾"),
+        ("ToM Stage",  f"{state['tom']}/5",  "🧠"),
+        ("Consciousness", f"{state['C']}",   "✨"),
+        ("Wisdom W(t)", f"{state['wisdom']}", "🦉"),
+    ]
+    for col, (lbl, val, icon) in zip(cols, metrics):
+        col.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-val">{icon}</div>
+                <div class="metric-val" style="font-size:1.2rem">{val}</div>
+                <div class="metric-lbl">{lbl}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+# (NOTE: For brevity, I will continue generating the remaining pages in the next message.)
