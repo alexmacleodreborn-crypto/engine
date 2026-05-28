@@ -129,21 +129,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("## 🧬 A7DO Genesis Mind")
-    st.markdown("**v5 FINAL · 36 sheets · 337 formulas**")
-    st.divider()
 
-    
-    st.divider()
-    st.markdown("**Source files merged:**")
-    st.markdown("- Consolidated v17 (18 sheets)")
-    st.markdown("- Master v3 (5 sheets)")
-    st.markdown("- Consolidated v9 (5 sheets)")
-    st.markdown("- Phase 7 NEW (4 sheets)")
-    st.markdown("- Learning Loop + Spec (2 sheets)")
-
-state = organism_state(tick)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE: MISSION CONTROL
