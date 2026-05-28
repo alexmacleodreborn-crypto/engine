@@ -1,6 +1,7 @@
 """
-A7DO Genesis Mind — Full Interactive Dashboard
-Streamlit application covering all 36 sheets and 7 developmental phases.
+A7DO Genesis Mind — v5 Interactive Dashboard
+Fixed: sidebar/pages/tick structure
+New: Camera, Mic, Speaker, Auto-step, Master Dashboard default
 """
 
 import streamlit as st
@@ -9,7 +10,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 import openpyxl
 import math
-import json
+import time
 from pathlib import Path
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -20,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Load workbook ─────────────────────────────────────────────────────────────
+# ── Workbook path ─────────────────────────────────────────────────────────────
 XLSX = Path("excel_report/a7do-final/A7DO_DNA_Master_v5_FINAL.xlsx")
 
 @st.cache_resource
@@ -28,8 +29,10 @@ def load_workbook():
     return openpyxl.load_workbook(XLSX, data_only=True)
 
 @st.cache_data
-def sheet_to_df(sheet_name, header_row=None):
+def sheet_to_df(sheet_name):
     wb = load_workbook()
+    if sheet_name not in wb.sheetnames:
+        return pd.DataFrame()
     ws = wb[sheet_name]
     rows = []
     for row in ws.iter_rows(values_only=True):
@@ -37,13 +40,14 @@ def sheet_to_df(sheet_name, header_row=None):
             rows.append(list(row))
     if not rows:
         return pd.DataFrame()
-    if header_row is not None and header_row < len(rows):
-        cols = [str(c) if c is not None else f"Col{i}" for i, c in enumerate(rows[header_row])]
-        data = rows[header_row+1:]
-        return pd.DataFrame(data, columns=cols)
     return pd.DataFrame(rows)
 
-# ── Organism formulas (pure Python — tick-driven) ─────────────────────────────
+@st.cache_data
+def get_sheet_names():
+    wb = load_workbook()
+    return wb.sheetnames
+
+# ── Organism state (pure Python, tick-driven) ─────────────────────────────────
 def organism_state(tick):
     week = round(tick / 80)
     height = 50 if week < 40 else min(50 + (177-50)*(1-math.exp(-0.005*(week-40))), 177)
@@ -56,7 +60,6 @@ def organism_state(tick):
     birth  = tick >= 3200
     phase7 = tick >= 96000
     wisdom = min(0.1+((week-1200)/800)*0.9, 1.0) if week >= 1200 else 0.0
-    # Life stage
     if   week >= 1200: stage = "Mature Adult"
     elif week >= 1100: stage = "Mid Adult"
     elif week >= 1000: stage = "Adult"
@@ -71,21 +74,17 @@ def organism_state(tick):
     elif week >= 12:   stage = "Fetal Mid"
     elif week >= 4:    stage = "Fetal Early"
     else:              stage = "Embryo"
-    # Learning loop phase
-    if tick % 800 == 0:  ll_phase = "💤 Sleep Consolidation"
-    elif tick % 10 == 0: ll_phase = "🔁 Repetition"
-    elif tick % 5 == 0:  ll_phase = "🤝 Interaction"
-    else:                ll_phase = "👁️ Exposure"
-    # Consciousness
-    C = min(0.05 + week/3000, 1.0)
-    # Prediction error (converges)
-    pred_err = max(0.1, 1.0 * math.exp(-0.0001*tick))
-    # LTM events
-    ltm = min(int(tick * 0.96), 200000)
+    if tick % 800 == 0:  ll = "💤 Sleep Consolidation"
+    elif tick % 10 == 0: ll = "🔁 Repetition"
+    elif tick % 5 == 0:  ll = "🤝 Interaction"
+    else:                ll = "👁️ Exposure"
+    C        = min(0.05 + week/3000, 1.0)
+    pred_err = max(0.1, math.exp(-0.0001*tick))
+    ltm      = min(int(tick * 0.96), 200000)
     return dict(tick=tick, week=week, stage=stage, height=round(height,1),
                 mass=round(mass,2), hr=round(hr,1), vocab=vocab,
                 motor=motor, tom=tom, perm=perm, birth=birth,
-                phase7=phase7, wisdom=round(wisdom,3), ll_phase=ll_phase,
+                phase7=phase7, wisdom=round(wisdom,3), ll_phase=ll,
                 C=round(C,3), pred_err=round(pred_err,3), ltm=ltm)
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -95,21 +94,14 @@ st.markdown("""
 [data-testid="stSidebar"] * { color: #e6edf3 !important; }
 .metric-card {
     background: linear-gradient(135deg, #1f2937, #111827);
-    border: 1px solid #374151;
-    border-radius: 12px;
-    padding: 16px;
-    text-align: center;
-    margin: 4px;
+    border: 1px solid #374151; border-radius: 12px;
+    padding: 16px; text-align: center; margin: 4px;
 }
-.metric-val { font-size: 2rem; font-weight: 700; color: #60a5fa; }
-.metric-lbl { font-size: 0.75rem; color: #9ca3af; margin-top: 4px; }
+.metric-val { font-size: 1.4rem; font-weight: 700; color: #60a5fa; }
+.metric-lbl { font-size: 0.72rem; color: #9ca3af; margin-top: 4px; }
 .phase-badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    margin: 2px;
+    display: inline-block; padding: 4px 10px; border-radius: 20px;
+    font-size: 0.78rem; font-weight: 600; margin: 2px;
 }
 .ph-core    { background:#1e3a5f; color:#60a5fa; }
 .ph-bio     { background:#1a3a2a; color:#4ade80; }
@@ -119,45 +111,136 @@ st.markdown("""
 .ph-meta    { background:#2a2a1a; color:#facc15; }
 .ph-loop    { background:#1a2a3a; color:#38bdf8; }
 .ph-p7      { background:#2a1a1a; color:#f87171; }
+.ph-p8      { background:#1a2a1a; color:#86efac; }
 .section-hdr {
-    font-size: 1.1rem; font-weight: 700;
+    font-size: 1.05rem; font-weight: 700;
     border-left: 4px solid #60a5fa;
-    padding-left: 10px; margin: 16px 0 8px 0;
-    color: #e2e8f0;
+    padding-left: 10px; margin: 14px 0 6px 0; color: #e2e8f0;
 }
+.auto-step-active { animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
 </style>
 """, unsafe_allow_html=True)
 
+# ── Session state initialisation ──────────────────────────────────────────────
+if "tick" not in st.session_state:
+    st.session_state.tick = 10000
+if "page" not in st.session_state:
+    st.session_state.page = "🏠 Master Dashboard"
+if "auto_step" not in st.session_state:
+    st.session_state.auto_step = False
+if "auto_speed" not in st.session_state:
+    st.session_state.auto_speed = 80
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## 🧬 A7DO Genesis Mind")
+    st.markdown("**v5 FINAL · 47 sheets · 337 formulas**")
+    st.divider()
+
+    # Tick slider
+    tick = st.slider("⚡ Current Tick", 0, 160000,
+                     st.session_state.tick, step=80,
+                     help="Drag to advance A7DO through its lifecycle")
+    st.session_state.tick = tick
+    s = organism_state(tick)
+    st.caption(f"Week {s['week']} · {s['stage']}")
+    st.divider()
+
+    # Navigation
+    PAGES = [
+        "🏠 Master Dashboard",
+        "📈 Growth Timeline",
+        "🧬 Biology",
+        "🧠 Cognition & Phase 4",
+        "🔄 Learning Loop",
+        "🦿 Movement Engine",
+        "🗣️ Word Learning Engine",
+        "🔊 Speech Production",
+        "🌐 Web-Hook Learning",
+        "🌍 World & Social",
+        "⚙️ Engines & Runtime",
+        "✨ Phase 7 — Wisdom",
+        "🚀 Phase 8 — AGI",
+        "📷 Sensors (Camera/Mic)",
+        "📊 All Sheets Explorer",
+    ]
+    page = st.radio("Navigate", PAGES,
+                    index=PAGES.index(st.session_state.page),
+                    label_visibility="collapsed")
+    st.session_state.page = page
+    st.divider()
+    st.markdown("**47 sheets · 26,869 cells**")
+    st.markdown("- Consolidated v17 (18)")
+    st.markdown("- Master v3 (5)")
+    st.markdown("- Consolidated v9 (5)")
+    st.markdown("- Phase 7 (4) · Language (5)")
+    st.markdown("- Phase 8 (7) · Sensors (1)")
+
+state = organism_state(tick)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-if page == "🏠 Mission Control":
-    st.title("🧬 A7DO Genesis Mind — Mission Control")
-    st.caption(f"Tick {tick:,} · Week {state['week']} · {state['stage']} · Learning Loop: {state['ll_phase']}")
+# PAGE: MASTER DASHBOARD (default)
+# ═══════════════════════════════════════════════════════════════════════════════
+if page == "🏠 Master Dashboard":
+    st.title("🧬 A7DO Genesis Mind — Master Dashboard")
+    st.caption(f"Tick {tick:,} · Week {state['week']} · {state['stage']} · {state['ll_phase']}")
 
-    # ── Status banner ──
+    # Status banner
     if state['phase7']:
-        st.success("🌟 PHASE 7 ACTIVE — Creative Synthesis · Wisdom Index · Career · Legacy engines online")
+        st.success("🌟 PHASE 7 ACTIVE — Creative Synthesis · Wisdom · Career · Legacy engines online")
     elif state['birth']:
-        st.info(f"🔄 Learning Loop active — {state['ll_phase']}")
+        st.info(f"🔄 Learning Loop: {state['ll_phase']}")
     else:
         st.warning("⏳ Prenatal — Birth at Tick 3,200")
 
+    # ── Auto-step controls ──
+    st.markdown('<div class="section-hdr">⚡ Auto-Step Control</div>', unsafe_allow_html=True)
+    col_a, col_b, col_c, col_d = st.columns([1,1,2,3])
+    with col_a:
+        if st.button("▶ Start" if not st.session_state.auto_step else "⏸ Pause",
+                     use_container_width=True):
+            st.session_state.auto_step = not st.session_state.auto_step
+    with col_b:
+        if st.button("⏹ Reset", use_container_width=True):
+            st.session_state.tick = 0
+            st.session_state.auto_step = False
+            st.rerun()
+    with col_c:
+        speed = st.select_slider("Step size", options=[80,400,800,1600,4000,8000],
+                                  value=st.session_state.auto_speed, label_visibility="collapsed")
+        st.session_state.auto_speed = speed
+    with col_d:
+        st.caption(f"Step: {speed} ticks ({speed//80} weeks) per advance")
+
+    # Auto-step execution
+    if st.session_state.auto_step:
+        new_tick = min(st.session_state.tick + st.session_state.auto_speed, 160000)
+        if new_tick >= 160000:
+            st.session_state.auto_step = False
+        st.session_state.tick = new_tick
+        time.sleep(0.3)
+        st.rerun()
+
+    st.divider()
+
     # ── Key metrics ──
-    cols = st.columns(8)
     metrics = [
-        ("Height", f"{state['height']} cm", "📏"),
-        ("Mass",   f"{state['mass']} kg",   "⚖️"),
-        ("Heart Rate", f"{state['hr']} bpm","❤️"),
-        ("Vocabulary", f"{state['vocab']:,}","💬"),
-        ("Motor Stage", f"{state['motor']}/5","🦾"),
-        ("ToM Stage",  f"{state['tom']}/5",  "🧠"),
-        ("Consciousness", f"{state['C']}",   "✨"),
-        ("Wisdom W(t)", f"{state['wisdom']}", "🦉"),
+        ("📏 Height",    f"{state['height']} cm"),
+        ("⚖️ Mass",      f"{state['mass']} kg"),
+        ("❤️ Heart Rate",f"{state['hr']} bpm"),
+        ("💬 Vocab",     f"{state['vocab']:,}"),
+        ("🦾 Motor",     f"{state['motor']}/5"),
+        ("🧠 ToM",       f"{state['tom']}/5"),
+        ("✨ Conscious", f"{state['C']}"),
+        ("🦉 Wisdom",    f"{state['wisdom']}"),
+        ("💾 LTM",       f"{state['ltm']:,}"),
+        ("🔮 Pred Err",  f"{state['pred_err']}"),
     ]
-    for col, (lbl, val, icon) in zip(cols, metrics):
-        col.markdown(f"""<div class="metric-card">
-            <div class="metric-val">{icon}</div>
-            <div class="metric-val" style="font-size:1.2rem">{val}</div>
+    cols = st.columns(5)
+    for i, (lbl, val) in enumerate(metrics):
+        cols[i%5].markdown(f"""<div class="metric-card">
+            <div class="metric-val">{val}</div>
             <div class="metric-lbl">{lbl}</div>
         </div>""", unsafe_allow_html=True)
 
@@ -165,83 +248,78 @@ if page == "🏠 Mission Control":
 
     # ── Growth curves ──
     col1, col2 = st.columns(2)
-    ticks_range = list(range(0, 160001, 800))
-    weeks_range = [t/80 for t in ticks_range]
+    ticks_r = list(range(0, 160001, 800))
+    weeks_r = [t/80 for t in ticks_r]
 
     with col1:
         st.markdown('<div class="section-hdr">📏 Physical Growth</div>', unsafe_allow_html=True)
-        heights = [organism_state(t)['height'] for t in ticks_range]
-        masses  = [organism_state(t)['mass']   for t in ticks_range]
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=weeks_range, y=heights, name="Height (cm)",
-                                  line=dict(color="#60a5fa", width=2)))
-        fig.add_trace(go.Scatter(x=weeks_range, y=masses, name="Mass (kg)",
-                                  line=dict(color="#4ade80", width=2), yaxis="y2"))
-        fig.add_vline(x=state['week'], line_dash="dash", line_color="#f87171",
-                      annotation_text=f"Wk {state['week']}")
-        fig.update_layout(
-            template="plotly_dark", height=280, margin=dict(l=0,r=0,t=20,b=0),
-            yaxis=dict(title="Height (cm)"),
-            yaxis2=dict(title="Mass (kg)", overlaying="y", side="right"),
-            legend=dict(orientation="h", y=1.1)
-        )
+        fig.add_trace(go.Scatter(x=weeks_r,
+            y=[organism_state(t)['height'] for t in ticks_r],
+            name="Height (cm)", line=dict(color="#60a5fa",width=2)))
+        fig.add_trace(go.Scatter(x=weeks_r,
+            y=[organism_state(t)['mass'] for t in ticks_r],
+            name="Mass (kg)", line=dict(color="#4ade80",width=2), yaxis="y2"))
+        fig.add_vline(x=state['week'], line_dash="dash", line_color="#f87171")
+        fig.update_layout(template="plotly_dark", height=260,
+            yaxis=dict(title="Height cm"),
+            yaxis2=dict(title="Mass kg", overlaying="y", side="right"),
+            legend=dict(orientation="h",y=1.1), margin=dict(l=0,r=0,t=20,b=0))
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
         st.markdown('<div class="section-hdr">💬 Vocabulary Growth</div>', unsafe_allow_html=True)
-        vocabs = [organism_state(t)['vocab'] for t in ticks_range]
         fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(x=weeks_range, y=vocabs, name="Vocabulary",
-                                   fill="tozeroy", line=dict(color="#c084fc", width=2)))
+        fig2.add_trace(go.Scatter(x=weeks_r,
+            y=[organism_state(t)['vocab'] for t in ticks_r],
+            fill="tozeroy", line=dict(color="#c084fc",width=2), name="V(t)"))
         fig2.add_vline(x=state['week'], line_dash="dash", line_color="#f87171")
-        fig2.update_layout(template="plotly_dark", height=280,
-                           margin=dict(l=0,r=0,t=20,b=0),
-                           yaxis=dict(title="Words"))
+        fig2.update_layout(template="plotly_dark", height=260,
+            yaxis_title="Words", margin=dict(l=0,r=0,t=20,b=0))
         st.plotly_chart(fig2, use_container_width=True)
 
     # ── Phase timeline ──
     st.markdown('<div class="section-hdr">🗺️ Developmental Phase Timeline</div>', unsafe_allow_html=True)
     phases = [
-        dict(Phase="Phase 1 — Biology",      Start=0,     End=3200,  Color="#1e40af"),
-        dict(Phase="Phase 2 — Sensorimotor", Start=3200,  End=6400,  Color="#065f46"),
-        dict(Phase="Phase 3 — Core Cognition",Start=6400, End=12480, Color="#7c2d12"),
-        dict(Phase="Phase 4 — Social Cog",   Start=12480, End=49920, Color="#581c87"),
-        dict(Phase="Phase 5 — Cultural",     Start=49920, End=74880, Color="#713f12"),
-        dict(Phase="Phase 6 — Identity",     Start=74880, End=96000, Color="#134e4a"),
-        dict(Phase="Phase 7 — Wisdom",       Start=96000, End=160000,Color="#7f1d1d"),
+        ("Phase 1 — Biology",       0,     3200,  "#1e40af"),
+        ("Phase 2 — Sensorimotor",  3200,  6400,  "#065f46"),
+        ("Phase 3 — Core Cognition",6400,  12480, "#7c2d12"),
+        ("Phase 4 — Social Cog",    12480, 49920, "#581c87"),
+        ("Phase 5 — Cultural",      49920, 74880, "#713f12"),
+        ("Phase 6 — Identity",      74880, 96000, "#134e4a"),
+        ("Phase 7 — Wisdom",        96000, 160000,"#7f1d1d"),
     ]
     fig3 = go.Figure()
-    for i, p in enumerate(phases):
-        fig3.add_trace(go.Bar(
-            x=[p['End']-p['Start']], y=[p['Phase']],
-            base=[p['Start']], orientation='h',
-            marker_color=p['Color'], name=p['Phase'],
-            hovertemplate=f"{p['Phase']}<br>Tick {p['Start']:,}–{p['End']:,}<extra></extra>"
-        ))
+    for name, start, end, color in phases:
+        fig3.add_trace(go.Bar(x=[end-start], y=[name], base=[start],
+            orientation='h', marker_color=color, name=name,
+            hovertemplate=f"{name}<br>Tick {start:,}–{end:,}<extra></extra>"))
     fig3.add_vline(x=tick, line_color="#f87171", line_width=3,
-                   annotation_text=f"Tick {tick:,}", annotation_position="top")
-    fig3.update_layout(template="plotly_dark", height=280, showlegend=False,
-                       barmode="overlay", margin=dict(l=0,r=0,t=20,b=0),
-                       xaxis=dict(title="Tick"))
+                   annotation_text=f"Tick {tick:,}")
+    fig3.update_layout(template="plotly_dark", height=260, showlegend=False,
+                       barmode="overlay", xaxis_title="Tick",
+                       margin=dict(l=0,r=0,t=20,b=0))
     st.plotly_chart(fig3, use_container_width=True)
 
     # ── Architecture completeness ──
-    st.markdown('<div class="section-hdr">📊 Architecture Completeness (v1.0)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-hdr">📊 Architecture Completeness</div>', unsafe_allow_html=True)
     domains = ["Biological body","Neural dynamics","Language & grounding","Cognitive architecture",
                "Energy & metabolism","Memory systems","Perception & vision","Motor intelligence",
                "Consciousness & self","Social & ToM","World & continuity","Temporal cognition"]
-    scores  = [85,80,65,60,60,55,55,50,50,30,25,20]
-    colors  = ["#4ade80" if s>=70 else "#facc15" if s>=50 else "#f87171" for s in scores]
-    fig4 = go.Figure(go.Bar(x=scores, y=domains, orientation='h',
-                             marker_color=colors,
-                             text=[f"{s}%" for s in scores], textposition="outside"))
-    fig4.update_layout(template="plotly_dark", height=380,
-                       margin=dict(l=0,r=0,t=20,b=0),
-                       xaxis=dict(range=[0,100], title="Completeness %"))
+    v1  = [85,80,65,60,60,55,55,50,50,30,25,20]
+    ph8 = [88,83,78,80,62,65,82,78,72,68,70,45]
+    fig4 = go.Figure()
+    fig4.add_trace(go.Bar(name="v1.0", x=v1, y=domains, orientation="h",
+                           marker_color="#374151", text=[f"{s}%" for s in v1], textposition="inside"))
+    fig4.add_trace(go.Bar(name="Phase 8", x=ph8, y=domains, orientation="h",
+                           marker_color="#4ade80", text=[f"{s}%" for s in ph8], textposition="outside"))
+    fig4.update_layout(template="plotly_dark", height=380, barmode="overlay",
+                       xaxis=dict(range=[0,100],title="Completeness %"),
+                       margin=dict(l=0,r=0,t=20,b=0))
     st.plotly_chart(fig4, use_container_width=True)
 
     # ── Sheet index ──
-    st.markdown('<div class="section-hdr">🗂️ All 36 Sheets</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-hdr">🗂️ All 47 Sheets</div>', unsafe_allow_html=True)
     sheet_cats = {
         "🏠 Master Dashboard":"Core","🧬 DNA Loop Engine":"Core","📈 Growth Timeline":"Core",
         "🧮 Mathematical Framework":"Core","⚙️ Parameters":"Core","📖 System Specification":"Core",
@@ -250,22 +328,27 @@ if page == "🏠 Mission Control":
         "🧠 Mind & Cognition":"Cognition","🗣️ Language Grounding":"Phase 4","🧠 Theory of Mind":"Phase 4",
         "🔮 Predictive Simulation":"Phase 4","🗺️ Scene Graph & Places":"Phase 4",
         "👁️ Object Permanence":"Phase 3","🦴 Proprioception (P1)":"Phase 3",
-        "💾 Episodic Memory (P3)":"Phase 3","🎯 Value System (P4)":"Phase 3","🦾 Motor Planning (P6)":"Phase 3","🦿 Movement Engine":"Phase 3",
+        "💾 Episodic Memory (P3)":"Phase 3","🎯 Value System (P4)":"Phase 3","🦾 Motor Planning (P6)":"Phase 3",
+        "🦿 Movement Engine":"Phase 3",
         "🌍 World Systems":"World","🗺️ World Data":"World","📐 World & Space":"World",
         "🏥 Immersive Places":"World","👥 NPC Engine":"Social",
         "🔗 System Connections":"Meta","🔗 System Integration":"Meta",
         "🚀 v2.0 Architecture Audit":"Meta","⚙️ Runtime Patch v0.1":"Runtime",
         "🔄 Learning Loop":"Learning Loop",
+        "🗣️ Word Learning Engine":"Learning Loop","🔊 Speech Production Engine":"Learning Loop",
+        "🌐 Web-Hook Learning Pipeline":"Learning Loop",
+        "👁️ Vision System (V1)":"Phase 8","🦾 Motor Intelligence (M1)":"Phase 8",
+        "🗺️ Planning Engine (P2)":"Phase 8","🤝 Social Cognition (S2)":"Phase 8",
+        "🪞 Meta-Cognition (R2)":"Phase 8","🌐 World Model Integration (W2)":"Phase 8",
+        "📊 Phase 8 AGI Readiness":"Phase 8",
         "✨ Creative Synthesis Engine":"Phase 7","🦉 Wisdom Index Engine":"Phase 7",
         "🎯 Career Specialisation Engine":"Phase 7","🌟 Legacy Projection Engine":"Phase 7",
     }
-    cat_color = {"Core":"ph-core","Biology":"ph-bio","Cognition":"ph-cog","Phase 4":"ph-cog",
-                 "Phase 3":"ph-p3","World":"ph-world","Social":"ph-world","Meta":"ph-meta",
-                 "Runtime":"ph-meta","Learning Loop":"ph-loop","Phase 7":"ph-p7"}
-    badges = ""
-    for sheet, cat in sheet_cats.items():
-        cls = cat_color.get(cat,"ph-core")
-        badges += f'<span class="phase-badge {cls}">{sheet}</span>'
+    cat_cls = {"Core":"ph-core","Biology":"ph-bio","Cognition":"ph-cog","Phase 4":"ph-cog",
+               "Phase 3":"ph-p3","World":"ph-world","Social":"ph-world","Meta":"ph-meta",
+               "Runtime":"ph-meta","Learning Loop":"ph-loop","Phase 7":"ph-p7","Phase 8":"ph-p8"}
+    badges = "".join(f'<span class="phase-badge {cat_cls.get(cat,"ph-core")}">{s}</span>'
+                     for s,cat in sheet_cats.items())
     st.markdown(badges, unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -273,53 +356,42 @@ if page == "🏠 Mission Control":
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "📈 Growth Timeline":
     st.title("📈 Growth Timeline")
-    st.caption("292-row developmental lifecycle from conception to mature adult")
-
     col1, col2 = st.columns(2)
     ticks_r = list(range(0, 160001, 400))
-    weeks_r  = [t/80 for t in ticks_r]
-
+    weeks_r = [t/80 for t in ticks_r]
     with col1:
         st.subheader("Physical Development")
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=weeks_r,
-            y=[organism_state(t)['height'] for t in ticks_r],
-            name="Height (cm)", line=dict(color="#60a5fa",width=2)))
-        fig.add_trace(go.Scatter(x=weeks_r,
-            y=[organism_state(t)['mass'] for t in ticks_r],
-            name="Mass (kg)", line=dict(color="#4ade80",width=2), yaxis="y2"))
-        fig.add_trace(go.Scatter(x=weeks_r,
-            y=[organism_state(t)['hr'] for t in ticks_r],
-            name="Heart Rate (bpm)", line=dict(color="#f87171",width=2), yaxis="y3"))
+        fig.add_trace(go.Scatter(x=weeks_r, y=[organism_state(t)['height'] for t in ticks_r],
+            name="Height cm", line=dict(color="#60a5fa",width=2)))
+        fig.add_trace(go.Scatter(x=weeks_r, y=[organism_state(t)['mass'] for t in ticks_r],
+            name="Mass kg", line=dict(color="#4ade80",width=2), yaxis="y2"))
+        fig.add_trace(go.Scatter(x=weeks_r, y=[organism_state(t)['hr'] for t in ticks_r],
+            name="HR bpm", line=dict(color="#f87171",width=2), yaxis="y3"))
         fig.add_vline(x=state['week'], line_dash="dash", line_color="white")
-        fig.update_layout(template="plotly_dark", height=350,
+        fig.update_layout(template="plotly_dark", height=320,
             yaxis=dict(title="Height cm"),
             yaxis2=dict(title="Mass kg", overlaying="y", side="right"),
             yaxis3=dict(title="HR bpm", overlaying="y", side="right", position=0.95),
-            legend=dict(orientation="h", y=1.1), margin=dict(l=0,r=0,t=30,b=0))
+            legend=dict(orientation="h",y=1.1), margin=dict(l=0,r=0,t=30,b=0))
         st.plotly_chart(fig, use_container_width=True)
-
     with col2:
         st.subheader("Cognitive Development")
         fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(x=weeks_r,
-            y=[organism_state(t)['vocab'] for t in ticks_r],
-            name="Vocabulary", fill="tozeroy", line=dict(color="#c084fc",width=2)))
-        fig2.add_trace(go.Scatter(x=weeks_r,
-            y=[organism_state(t)['motor']*10000 for t in ticks_r],
-            name="Motor Stage ×10k", line=dict(color="#fb923c",width=2,dash="dot")))
-        fig2.add_trace(go.Scatter(x=weeks_r,
-            y=[organism_state(t)['tom']*10000 for t in ticks_r],
-            name="ToM Stage ×10k", line=dict(color="#22d3ee",width=2,dash="dot")))
+        fig2.add_trace(go.Scatter(x=weeks_r, y=[organism_state(t)['vocab'] for t in ticks_r],
+            fill="tozeroy", line=dict(color="#c084fc",width=2), name="Vocabulary"))
+        fig2.add_trace(go.Scatter(x=weeks_r, y=[organism_state(t)['motor']*10000 for t in ticks_r],
+            name="Motor ×10k", line=dict(color="#fb923c",width=2,dash="dot")))
+        fig2.add_trace(go.Scatter(x=weeks_r, y=[organism_state(t)['tom']*10000 for t in ticks_r],
+            name="ToM ×10k", line=dict(color="#22d3ee",width=2,dash="dot")))
         fig2.add_vline(x=state['week'], line_dash="dash", line_color="white")
-        fig2.update_layout(template="plotly_dark", height=350,
-            legend=dict(orientation="h", y=1.1), margin=dict(l=0,r=0,t=30,b=0))
+        fig2.update_layout(template="plotly_dark", height=320,
+            legend=dict(orientation="h",y=1.1), margin=dict(l=0,r=0,t=30,b=0))
         st.plotly_chart(fig2, use_container_width=True)
 
-    # Lifecycle milestones table
     st.subheader("Key Lifecycle Milestones")
     milestones = [
-        (0,0,"Embryo","Fertilisation / cell division begins"),
+        (0,0,"Embryo","Fertilisation"),
         (320,4,"Embryo","Neural plate formed"),
         (640,8,"Embryo","Heart chamber partition"),
         (960,12,"Fetal Early","Limb differentiation"),
@@ -336,361 +408,278 @@ elif page == "📈 Growth Timeline":
         (32000,400,"Pre-Adolescent","Skilled motor stage 5"),
         (49920,624,"Adolescent","Full ToM online"),
         (74880,936,"Young Adult","All adolescent systems 100%"),
-        (80000,1000,"Adult","Strategic reasoning online"),
-        (96000,1200,"Mature Adult","Phase 7 ACTIVATES — Wisdom Engine"),
-        (160000,2000,"Mature Adult","W(t)=0.95 — Legacy curve L(t)=0.94"),
+        (96000,1200,"Mature Adult","Phase 7 ACTIVATES"),
+        (160000,2000,"Mature Adult","W(t)=0.95 — Legacy L(t)=0.94"),
     ]
     df_m = pd.DataFrame(milestones, columns=["Tick","Week","Stage","Milestone"])
-    df_m["Current"] = df_m["Tick"].apply(lambda t: "✅" if t <= tick else "⏳")
-    st.dataframe(df_m, use_container_width=True, hide_index=True,
-                 column_config={"Current": st.column_config.TextColumn("Status", width="small")})
+    df_m["Status"] = df_m["Tick"].apply(lambda t: "✅" if t <= tick else "⏳")
+    st.dataframe(df_m, use_container_width=True, hide_index=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE: BIOLOGY
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "🧬 Biology":
     st.title("🧬 Biology — Body Systems & Growth")
-
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🫀 Body Systems", "🧬 Prenatal & Genesis",
-        "⚡ Energy & Metabolism", "📏 Full Growth System", "🔬 Subsystems"
-    ])
-
+    tab1,tab2,tab3,tab4,tab5 = st.tabs(["🫀 Body Systems","🧬 Prenatal","⚡ Energy","📏 Full Growth","🔬 Subsystems"])
     with tab1:
-        st.subheader("🫀 Body Systems")
-        df = sheet_to_df("🫀 Body Systems")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.dataframe(sheet_to_df("🫀 Body Systems"), use_container_width=True, hide_index=True)
     with tab2:
-        st.subheader("🧬 Prenatal & Genesis")
-        df = sheet_to_df("🧬 Prenatal & Genesis")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.dataframe(sheet_to_df("🧬 Prenatal & Genesis"), use_container_width=True, hide_index=True)
     with tab3:
-        st.subheader("⚡ Energy & Metabolism")
-        df = sheet_to_df("⚡ Energy & Metabolism")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
-        # ATP gauge
-        atp = min(1.103, 0.5 + tick/200000)
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number", value=atp,
-            title={"text": "ATP Level"},
-            gauge={"axis":{"range":[0,1.5]},
-                   "bar":{"color":"#4ade80"},
-                   "steps":[{"range":[0,0.5],"color":"#7f1d1d"},
-                             {"range":[0.5,1.0],"color":"#713f12"},
-                             {"range":[1.0,1.5],"color":"#14532d"}]}))
-        fig.update_layout(template="plotly_dark", height=250)
-        st.plotly_chart(fig, use_container_width=True)
-
+        st.dataframe(sheet_to_df("⚡ Energy & Metabolism"), use_container_width=True, hide_index=True)
     with tab4:
-        st.subheader("📏 Full Growth System")
-        df = sheet_to_df("📏 Full Growth System")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.dataframe(sheet_to_df("📏 Full Growth System"), use_container_width=True, hide_index=True)
     with tab5:
-        st.subheader("🔬 Subsystems")
-        df = sheet_to_df("🔬 Subsystems")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(sheet_to_df("🔬 Subsystems"), use_container_width=True, hide_index=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE: COGNITION & PHASE 4
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "🧠 Cognition & Phase 4":
-    st.title("🧠 Cognition & Phase 4 — Social Cognitive Engines")
-
+    st.title("🧠 Cognition & Phase 4")
     tab1,tab2,tab3,tab4,tab5,tab6,tab7 = st.tabs([
-        "🧠 Mind & Cognition","🗣️ Language Grounding",
-        "🧠 Theory of Mind","🔮 Predictive Simulation",
-        "🗺️ Scene Graph","👁️ Object Permanence","💾 Episodic Memory"
-    ])
-
+        "🧠 Mind","🗣️ Language","🧠 ToM","🔮 Predictive","🗺️ Scene Graph","👁️ Object Perm","💾 Episodic"])
     with tab1:
-        st.subheader("🧠 Mind & Cognition")
-        # Cognitive metrics live
         col1,col2,col3,col4 = st.columns(4)
-        col1.metric("Vocabulary", f"{state['vocab']:,} words")
-        col2.metric("Consciousness C", state['C'])
-        col3.metric("Prediction Error", state['pred_err'])
-        col4.metric("LTM Events", f"{state['ltm']:,}")
-        df = sheet_to_df("🧠 Mind & Cognition")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        col1.metric("Vocabulary",f"{state['vocab']:,}")
+        col2.metric("Consciousness",state['C'])
+        col3.metric("Pred Error",state['pred_err'])
+        col4.metric("LTM Events",f"{state['ltm']:,}")
+        st.dataframe(sheet_to_df("🧠 Mind & Cognition"), use_container_width=True, hide_index=True)
     with tab2:
-        st.subheader("🗣️ Language Grounding")
-        st.info("G(word) = Σ_m w_m·f_m(percept) — Multimodal word-percept-action binding")
-        # Vocab logistic curve
-        weeks_r = list(range(0, 1300, 10))
+        weeks_r = list(range(0,1300,10))
         vocabs  = [round(50000/(1+math.exp(-0.05*(w-156)))) for w in weeks_r]
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=weeks_r, y=vocabs, fill="tozeroy",
-                                  line=dict(color="#c084fc",width=2), name="Vocabulary V(t)"))
-        fig.add_vline(x=state['week'], line_dash="dash", line_color="#f87171",
-                      annotation_text=f"Wk {state['week']}: {state['vocab']:,} words")
-        fig.update_layout(template="plotly_dark", height=250,
-                          xaxis_title="Week", yaxis_title="Words",
-                          margin=dict(l=0,r=0,t=20,b=0))
-        st.plotly_chart(fig, use_container_width=True)
-        df = sheet_to_df("🗣️ Language Grounding")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        fig.add_trace(go.Scatter(x=weeks_r,y=vocabs,fill="tozeroy",line=dict(color="#c084fc",width=2)))
+        fig.add_vline(x=state['week'],line_dash="dash",line_color="#f87171",
+                      annotation_text=f"Wk {state['week']}: {state['vocab']:,}")
+        fig.update_layout(template="plotly_dark",height=220,margin=dict(l=0,r=0,t=20,b=0))
+        st.plotly_chart(fig,use_container_width=True)
+        st.dataframe(sheet_to_df("🗣️ Language Grounding"), use_container_width=True, hide_index=True)
     with tab3:
-        st.subheader("🧠 Theory of Mind")
-        # ToM stage gauge
-        tom_stages = {1:"Proto-ToM (Wk 40–156)",2:"Desire inference (Wk 156–208)",
-                      3:"False belief (Wk 208–312)",4:"Second-order (Wk 312–624)",
-                      5:"Full social cognition (Wk 624+)"}
-        st.success(f"**Current ToM Stage: {state['tom']} — {tom_stages[state['tom']]}**")
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number", value=state['tom'],
-            title={"text":"ToM Stage"},
-            gauge={"axis":{"range":[0,5],"tickvals":[1,2,3,4,5]},
-                   "bar":{"color":"#22d3ee"},
-                   "steps":[{"range":[0,2],"color":"#1e3a5f"},
-                             {"range":[2,4],"color":"#1a3a3a"},
-                             {"range":[4,5],"color":"#134e4a"}]}))
-        fig.update_layout(template="plotly_dark", height=250)
-        st.plotly_chart(fig, use_container_width=True)
-        df = sheet_to_df("🧠 Theory of Mind")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        tom_labels = {1:"Proto-ToM",2:"Desire inference",3:"False belief",4:"Second-order",5:"Full social"}
+        st.success(f"ToM Stage {state['tom']} — {tom_labels[state['tom']]}")
+        st.dataframe(sheet_to_df("🧠 Theory of Mind"), use_container_width=True, hide_index=True)
     with tab4:
-        st.subheader("🔮 Predictive Simulation")
-        st.info("F = Σ[εᵀ·Π·ε + log|Σ|] — Free energy minimisation")
-        # Prediction error decay
-        ticks_r = list(range(0, 160001, 800))
-        errors  = [max(0.1, math.exp(-0.0001*t)) for t in ticks_r]
+        ticks_r = list(range(0,160001,800))
+        errors  = [max(0.1,math.exp(-0.0001*t)) for t in ticks_r]
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=ticks_r, y=errors, fill="tozeroy",
-                                  line=dict(color="#f87171",width=2), name="Prediction Error"))
-        fig.add_vline(x=tick, line_dash="dash", line_color="white")
-        fig.update_layout(template="plotly_dark", height=250,
-                          xaxis_title="Tick", yaxis_title="Error",
-                          margin=dict(l=0,r=0,t=20,b=0))
-        st.plotly_chart(fig, use_container_width=True)
-        df = sheet_to_df("🔮 Predictive Simulation")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        fig.add_trace(go.Scatter(x=ticks_r,y=errors,fill="tozeroy",line=dict(color="#f87171",width=2)))
+        fig.add_vline(x=tick,line_dash="dash",line_color="white")
+        fig.update_layout(template="plotly_dark",height=220,margin=dict(l=0,r=0,t=20,b=0))
+        st.plotly_chart(fig,use_container_width=True)
+        st.dataframe(sheet_to_df("🔮 Predictive Simulation"), use_container_width=True, hide_index=True)
     with tab5:
-        st.subheader("🗺️ Scene Graph & Places")
-        # Place nodes map
-        places = [
-            ("Hospital (Birth)",0,0,"🏥"),("A7DO Home H8",1090,880,"🏠"),
-            ("H1 — Alexis & Evelyn",1050,900,"🏡"),("H7 — James & Olivia",1100,870,"🏡"),
-            ("BeenFore City",1000,1000,"🌆"),("BeenFore Lane",1090,860,"🛣️"),
-        ]
-        fig = go.Figure()
-        for name,x,y,icon in places:
-            fig.add_trace(go.Scatter(x=[x],y=[y],mode="markers+text",
-                name=name, text=[f"{icon} {name}"], textposition="top center",
-                marker=dict(size=14, color="#60a5fa")))
-        fig.add_trace(go.Scatter(x=[1090],y=[880],mode="markers",
-            name="A7DO (current)", marker=dict(size=20,color="#f87171",symbol="star")))
-        fig.update_layout(template="plotly_dark", height=350,
-                          xaxis_title="World X (m)", yaxis_title="World Y (m)",
-                          showlegend=False, margin=dict(l=0,r=0,t=20,b=0))
-        st.plotly_chart(fig, use_container_width=True)
-        df = sheet_to_df("🗺️ Scene Graph & Places")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.dataframe(sheet_to_df("🗺️ Scene Graph & Places"), use_container_width=True, hide_index=True)
     with tab6:
-        st.subheader("👁️ Object Permanence")
-        st.metric("Current Stage", f"{state['perm']} / 3")
-        df = sheet_to_df("👁️ Object Permanence")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.metric("Object Permanence Stage",f"{state['perm']}/3")
+        st.dataframe(sheet_to_df("👁️ Object Permanence"), use_container_width=True, hide_index=True)
     with tab7:
-        st.subheader("💾 Episodic Memory")
-        st.metric("LTM Events", f"{state['ltm']:,}")
-        # Memory accumulation
-        ticks_r = list(range(0, 160001, 800))
-        ltms = [min(int(t*0.96), 200000) for t in ticks_r]
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=ticks_r, y=ltms, fill="tozeroy",
-                                  line=dict(color="#fb923c",width=2), name="LTM Events"))
-        fig.add_vline(x=tick, line_dash="dash", line_color="white")
-        fig.update_layout(template="plotly_dark", height=250,
-                          xaxis_title="Tick", yaxis_title="Events",
-                          margin=dict(l=0,r=0,t=20,b=0))
-        st.plotly_chart(fig, use_container_width=True)
-        df = sheet_to_df("💾 Episodic Memory (P3)")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.metric("LTM Events",f"{state['ltm']:,}")
+        st.dataframe(sheet_to_df("💾 Episodic Memory (P3)"), use_container_width=True, hide_index=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE: LEARNING LOOP
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "🔄 Learning Loop":
     st.title("🔄 Learning Loop — Experience-First Architecture")
-    st.caption("A7DO learns ONLY through interaction → repetition → sleep consolidation")
-
-    # Current phase highlight
-    phase_colors = {
-        "👁️ Exposure":"#1e3a5f","🤝 Interaction":"#065f46",
-        "🔁 Repetition":"#581c87","💤 Sleep Consolidation":"#1a1a2e"
-    }
-    col1,col2,col3,col4 = st.columns(4)
-    for col, (ph, color) in zip([col1,col2,col3,col4], phase_colors.items()):
+    phase_colors = {"👁️ Exposure":"#1e3a5f","🤝 Interaction":"#065f46",
+                    "🔁 Repetition":"#581c87","💤 Sleep Consolidation":"#1a1a2e"}
+    cols = st.columns(4)
+    for col,(ph,color) in zip(cols,phase_colors.items()):
         active = ph == state['ll_phase']
-        border = "3px solid #f87171" if active else "1px solid #374151"
-        col.markdown(f"""<div style="background:{color};border:{border};border-radius:12px;
-            padding:16px;text-align:center;">
-            <div style="font-size:1.5rem">{ph.split()[0]}</div>
+        col.markdown(f"""<div style="background:{color};border:{'3px solid #f87171' if active else '1px solid #374151'};
+            border-radius:12px;padding:14px;text-align:center;">
+            <div style="font-size:1.3rem">{ph.split()[0]}</div>
             <div style="font-weight:700;color:{'#f87171' if active else '#e2e8f0'}">{ph}</div>
-            <div style="font-size:0.75rem;color:#9ca3af">{'← ACTIVE NOW' if active else ''}</div>
+            <div style="font-size:0.7rem;color:#9ca3af">{'← ACTIVE' if active else ''}</div>
         </div>""", unsafe_allow_html=True)
-
     st.divider()
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("4-Stage Cycle")
-        stages_data = {
-            "Stage": ["1 — Exposure","2 — Interaction","3 — Repetition","4 — Sleep Consolidation"],
-            "Fires Every": ["Every tick","Every 5 ticks","Every 10 ticks","Every 800 ticks"],
-            "Key Engines": [
-                "EQ_SENS_06 · EQ_EMOT_07 · EQ_ATTN_09",
-                "EQ_PRED_08 · Motor Planning · Value TD(λ)",
-                "EQ_LANG_12 · G(word) · Scene Graph · ToM",
-                "Episodic Memory · EQ_PRED_08 dream replay"
-            ],
-            "Output": [
-                "Sensory vector · attention · emotional delta",
-                "Reinforcement · motor update · error reduction",
-                "Word-object bindings · concept formation",
-                "Stable knowledge · grounded language · pruned LTM"
-            ]
-        }
-        st.dataframe(pd.DataFrame(stages_data), use_container_width=True, hide_index=True)
-
-    with col2:
-        st.subheader("Word Learning Pipeline")
-        word_steps = {
-            "Step": ["1 Exposure","2 Attention","3 Prediction","4 Emotion",
-                     "5 Episodic","6 Repetition","7 Sleep","8 Grounded"],
-            "Process": [
-                "Hears 'ball' while seeing round red object",
-                "Attention spikes on novel object",
-                "Prediction error spikes on unexpected outcome",
-                "Emotional valence tags the event",
-                "Event stored in episodic memory",
-                "Multiple exposures strengthen binding",
-                "Dream replay binds word→percept→motor→emotion",
-                "Stable word-object binding emerges"
-            ],
-            "Engine": ["EQ_SENS_06","EQ_ATTN_09","EQ_PRED_08","EQ_EMOT_07",
-                       "Episodic Mem","EQ_LANG_12","EQ_PRED_08","G(word)"],
-            "Status": ["✅","✅","✅","✅","✅","🟡","✅","🟡"]
-        }
-        st.dataframe(pd.DataFrame(word_steps), use_container_width=True, hide_index=True)
-
-    st.subheader("Concept Formation Types")
-    concepts = {
-        "Type": ["Object category","Action schema","Spatial relation","Social concept","Abstract concept","Self-concept"],
-        "Example": ["'ball' = round+rolls+graspable","'eat' = mouth+food+satisfaction",
-                    "'in' = object inside container","'friend' = NPC+positive bond",
-                    "'justice' = fair+consistent+norm","'I' = self-model in consciousness"],
-        "Onset Week": ["80–156","80–156","260–624","156–260","624+","624+"],
-        "Required Systems": [
-            "Object Permanence + Language + Scene Graph",
-            "Motor Planning + Value System + Language",
-            "Scene Graph + Language Grounding",
-            "ToM + NPC Engine + Episodic Memory",
-            "Language + ToM + Consciousness Loop",
-            "Consciousness Loop + Episodic + Value System"
-        ]
-    }
-    st.dataframe(pd.DataFrame(concepts), use_container_width=True, hide_index=True)
-
-    st.subheader("Identity Emergence Components")
-    identity = {
-        "Component": ["Episodic self-history","Stable prediction patterns","Emotional history",
-                      "Social bonds","Value system","Self-model","Skill identity","Wisdom & legacy"],
-        "Source": ["Episodic Memory","Predictive Simulation","Emotion & Reinforcement",
-                   "NPC Engine + ToM","Value System (P4)","Consciousness Loop",
-                   "Motor Planning + Language","Phase 7 engines"],
-        "Status": [f"✅ {state['ltm']:,} events",f"✅ Error={state['pred_err']}",
-                   "✅ H(t) active",f"✅ Lorraine=0.95","✅ V(s)=1.0",
-                   f"✅ C={state['C']}","🟡 Motor stage "+str(state['motor']),
-                   "⏳ Wk 1200+" if not state['phase7'] else "✅ Active"]
-    }
-    st.dataframe(pd.DataFrame(identity), use_container_width=True, hide_index=True)
-
-    st.subheader("Full Learning Loop Sheet")
-    df = sheet_to_df("🔄 Learning Loop")
-    st.dataframe(df, use_container_width=True, hide_index=True)
-
-
-
-
-    tab1,tab2,tab3,tab4 = st.tabs(["🌍 World Systems","👥 NPC Engine","🗺️ World Data","🏥 Immersive Places"])
-
+    tab1,tab2,tab3 = st.tabs(["4-Stage Cycle","Word Pipeline","Identity"])
     with tab1:
-        st.subheader("🌍 World Systems")
-        # World map
+        stages = {"Stage":["1 Exposure","2 Interaction","3 Repetition","4 Sleep"],
+                  "Fires":["Every tick","Every 5t","Every 10t","Every 800t"],
+                  "Engines":["EQ_SENS_06·EQ_EMOT_07·EQ_ATTN_09","EQ_PRED_08·Motor·Value TD(λ)",
+                              "EQ_LANG_12·G(word)·Scene Graph·ToM","Episodic·EQ_PRED_08 dream replay"],
+                  "Output":["Sensory vector·attention·emotional delta","Reinforcement·motor update",
+                             "Word-object bindings·concept formation","Stable knowledge·grounded language"]}
+        st.dataframe(pd.DataFrame(stages), use_container_width=True, hide_index=True)
+    with tab2:
+        steps = {"Step":["1 Exposure","2 Attention","3 Prediction","4 Emotion","5 Episodic","6 Repetition","7 Sleep","8 Grounded"],
+                 "Process":["Hears 'ball' + sees object","Attention spikes on novel","Prediction error spikes",
+                             "Emotional valence tags event","Stored in episodic memory","Multiple exposures strengthen",
+                             "Dream replay binds word→percept","Stable word-object binding"],
+                 "Engine":["EQ_SENS_06","EQ_ATTN_09","EQ_PRED_08","EQ_EMOT_07","Episodic","EQ_LANG_12","EQ_PRED_08","G(word)"],
+                 "Status":["✅","✅","✅","✅","✅","🟡","✅","🟡"]}
+        st.dataframe(pd.DataFrame(steps), use_container_width=True, hide_index=True)
+    with tab3:
+        identity = {"Component":["Episodic self-history","Stable prediction","Emotional history",
+                                  "Social bonds","Value system","Self-model","Skill identity","Wisdom"],
+                    "Status":[f"✅ {state['ltm']:,} events",f"✅ Error={state['pred_err']}",
+                               "✅ H(t) active","✅ Lorraine=0.95","✅ V(s)=1.0",
+                               f"✅ C={state['C']}",f"🟡 Motor {state['motor']}",
+                               "✅ Active" if state['phase7'] else "⏳ Wk 1200+"]}
+        st.dataframe(pd.DataFrame(identity), use_container_width=True, hide_index=True)
+    st.subheader("Full Sheet")
+    st.dataframe(sheet_to_df("🔄 Learning Loop"), use_container_width=True, hide_index=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: MOVEMENT ENGINE
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "🦿 Movement Engine":
+    st.title("🦿 Movement Engine — Sections 4.1–4.10")
+    motor_labels = {1:"Reflex-only",2:"Crawling",3:"Walking",4:"Coordinated",5:"Skilled"}
+    st.info(f"Motor Stage {state['motor']} — {motor_labels[state['motor']]}")
+    tab1,tab2,tab3,tab4 = st.tabs(["4.1–4.3 Dynamics","4.4 Control Stack","4.5–4.6 Primitives & Reflexes","4.7–4.8 FOV & Learning"])
+    with tab1:
+        st.code("""M(θ)θ̈ + C(θ,θ̇) + G(θ) + Jc(θ)ᵀλ = τ(θ,θ̇,A)
+F_m = A_m · F_max,m · f_length(l_m) · f_velocity(v_m)
+τ(θ,θ̇,A) = Σ_m B_m(θ) · F_m""", language="text")
+        l_range = [i/100 for i in range(50,151)]
+        f_len = [math.exp(-(l-1.0)**2/(2*0.04)) for l in l_range]
+        fig = go.Figure(go.Scatter(x=l_range,y=f_len,fill="tozeroy",line=dict(color="#4ade80",width=2)))
+        fig.update_layout(template="plotly_dark",height=200,xaxis_title="Muscle Length",
+                          yaxis_title="Force Scale",margin=dict(l=0,r=0,t=10,b=0))
+        st.plotly_chart(fig,use_container_width=True)
+    with tab2:
+        layers = {"Layer":["1 Intent","2 Task Error","3 Task PD","4 IK","5 Inv Dynamics","6 Torque→Muscle"],
+                  "Formula":["Goal → x_target","e_x = x_target − x(θ)","ẍ_des = Kp·e_x + Kd·ė_x",
+                              "θ̈_des = J†·ẍ_des + (I−J†J)·θ̈_null",
+                              "τ_des = M·θ̈_des + C + G + τ_stab",
+                              "min ||τ_des − τ(A)||² + λ||A||²"]}
+        st.dataframe(pd.DataFrame(layers), use_container_width=True, hide_index=True)
+    with tab3:
+        prims = {"Primitive":["Posture","Balance","Gait","Reaching","Grasp"],
+                 "Active":["✅" if state['motor']>=1 else "🔒","✅" if state['motor']>=2 else "🔒",
+                            "✅" if state['motor']>=3 else "🔒","✅" if state['motor']>=2 else "🔒",
+                            "✅" if state['motor']>=4 else "🔒"],
+                 "Stage":[1,2,3,2,4]}
+        st.dataframe(pd.DataFrame(prims), use_container_width=True, hide_index=True)
+    with tab4:
+        st.code("""e_gaze = x_fovea,target − x_fovea,current
+θ̈_head = Kp_gaze·e_gaze − Kd_gaze·θ̇_head
+r_t = w₁(−||e_x||) + w₂(−energy) + w₃(balance) + w₄(−FOV_err)""", language="text")
+    st.subheader("Full Sheet")
+    st.dataframe(sheet_to_df("🦿 Movement Engine"), use_container_width=True, hide_index=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: WORD LEARNING ENGINE
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "🗣️ Word Learning Engine":
+    st.title("🗣️ Word Learning Engine")
+    col1,col2 = st.columns(2)
+    with col1:
+        weeks_r = list(range(0,1300,5))
+        vocabs  = [round(50000/(1+math.exp(-0.05*(w-156)))) for w in weeks_r]
+        fig = go.Figure(go.Scatter(x=weeks_r,y=vocabs,fill="tozeroy",line=dict(color="#4ade80",width=2)))
+        fig.add_vline(x=state['week'],line_dash="dash",line_color="#f87171",
+                      annotation_text=f"{state['vocab']:,} words")
+        fig.update_layout(template="plotly_dark",height=250,xaxis_title="Week",
+                          yaxis_title="Words",margin=dict(l=0,r=0,t=20,b=0))
+        st.plotly_chart(fig,use_container_width=True)
+    with col2:
+        conf_vals = [0.95,0.88,0.91,0.82,0.61,0.58,0.52,0.28,0.19,0.22,0.71,0.44]
+        words_s   = ["mama","up","no","more","ball","eat","hot","dog","learn","friend","walk","hurt"]
+        colors    = ["#4ade80" if c>=0.7 else "#facc15" if c>=0.4 else "#f87171" for c in conf_vals]
+        fig2 = go.Figure(go.Bar(x=words_s,y=conf_vals,marker_color=colors,
+                                 text=[f"{c:.2f}" for c in conf_vals],textposition="outside"))
+        fig2.add_hline(y=0.3,line_dash="dash",line_color="#f87171",annotation_text="ε=0.3")
+        fig2.update_layout(template="plotly_dark",height=250,
+                           yaxis=dict(range=[0,1.1]),margin=dict(l=0,r=0,t=20,b=0))
+        st.plotly_chart(fig2,use_container_width=True)
+    st.dataframe(sheet_to_df("🗣️ Word Learning Engine"), use_container_width=True, hide_index=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: SPEECH PRODUCTION
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "🔊 Speech Production":
+    st.title("🔊 Speech Production Engine")
+    tab1,tab2 = st.tabs(["🎵 Acoustic Model","📄 Full Sheet"])
+    with tab1:
+        vowels = [("/a/",800,1200),("/i/",300,2300),("/u/",300,800),("/e/",500,1800),("/o/",450,900)]
         fig = go.Figure()
-        locs = [
-            ("Hospital",0,0,"#f87171"),("H8 Home",1090,880,"#4ade80"),
-            ("H1",1050,900,"#60a5fa"),("H7",1100,870,"#60a5fa"),
-            ("BeenFore City",1000,1000,"#facc15"),
-        ]
+        for v,f1,f2 in vowels:
+            fig.add_trace(go.Scatter(x=[f2],y=[f1],mode="markers+text",text=[v],
+                textposition="top center",marker=dict(size=20,color="#60a5fa"),name=v))
+        fig.update_layout(template="plotly_dark",height=300,
+                          xaxis=dict(title="F2 Hz",autorange="reversed"),
+                          yaxis=dict(title="F1 Hz",autorange="reversed"),
+                          showlegend=False,margin=dict(l=0,r=0,t=20,b=0))
+        st.plotly_chart(fig,use_container_width=True)
+        emotions = ["Neutral","Happy","Sad","Angry","Fearful","Surprised"]
+        f0_mods  = [1.0,1.25,0.85,1.15,1.10,1.35]
+        fig2 = go.Figure(go.Bar(x=emotions,y=[200*m for m in f0_mods],
+            marker_color=["#9ca3af","#4ade80","#60a5fa","#f87171","#c084fc","#facc15"],
+            text=[f"{200*m:.0f} Hz" for m in f0_mods],textposition="outside"))
+        fig2.update_layout(template="plotly_dark",height=240,
+                           yaxis_title="f_0 Hz",margin=dict(l=0,r=0,t=20,b=0))
+        st.plotly_chart(fig2,use_container_width=True)
+    with tab2:
+        st.dataframe(sheet_to_df("🔊 Speech Production Engine"), use_container_width=True, hide_index=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: WEB-HOOK LEARNING
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "🌐 Web-Hook Learning":
+    st.title("🌐 Web-Hook Learning Pipeline")
+    st.warning("**3 words below webhook threshold (ε=0.3):** 'dog' (0.28) · 'learn' (0.19) · 'friend' (0.22)")
+    tab1,tab2 = st.tabs(["🔄 Pipeline","📄 Full Sheet"])
+    with tab1:
+        words_wh = ["dog","learn","friend"]
+        conf_b = [0.28,0.19,0.22]; conf_a = [0.63,0.54,0.57]
+        fig = go.Figure()
+        fig.add_trace(go.Bar(name="Before",x=words_wh,y=conf_b,marker_color="#f87171"))
+        fig.add_trace(go.Bar(name="After webhook",x=words_wh,y=conf_a,marker_color="#4ade80"))
+        fig.add_hline(y=0.3,line_dash="dash",line_color="white",annotation_text="ε=0.3")
+        fig.update_layout(template="plotly_dark",height=260,barmode="group",
+                          yaxis=dict(range=[0,1]),margin=dict(l=0,r=0,t=20,b=0))
+        st.plotly_chart(fig,use_container_width=True)
+    with tab2:
+        st.dataframe(sheet_to_df("🌐 Web-Hook Learning Pipeline"), use_container_width=True, hide_index=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: WORLD & SOCIAL
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "🌍 World & Social":
+    st.title("🌍 World & Social — BeenFore City")
+    tab1,tab2,tab3,tab4 = st.tabs(["🌍 World Systems","👥 NPC Engine","🗺️ World Data","🏥 Immersive Places"])
+    with tab1:
+        locs = [("Hospital",0,0,"#f87171"),("H8 Home",1090,880,"#4ade80"),
+                ("H1",1050,900,"#60a5fa"),("H7",1100,870,"#60a5fa"),("BeenFore City",1000,1000,"#facc15")]
+        fig = go.Figure()
         for name,x,y,color in locs:
-            fig.add_trace(go.Scatter(x=[x],y=[y],mode="markers+text",
-                text=[name],textposition="top center",
-                marker=dict(size=16,color=color),name=name))
-        fig.update_layout(template="plotly_dark",height=350,
+            fig.add_trace(go.Scatter(x=[x],y=[y],mode="markers+text",text=[name],
+                textposition="top center",marker=dict(size=16,color=color),name=name))
+        fig.update_layout(template="plotly_dark",height=320,
                           xaxis_title="World X (m)",yaxis_title="World Y (m)",
                           margin=dict(l=0,r=0,t=20,b=0))
-        st.plotly_chart(fig, use_container_width=True)
-        df = sheet_to_df("🌍 World Systems")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.plotly_chart(fig,use_container_width=True)
+        st.dataframe(sheet_to_df("🌍 World Systems"), use_container_width=True, hide_index=True)
     with tab2:
-        st.subheader("👥 NPC Engine")
-        npcs = [
-            ("Lorraine","Primary caregiver",0.95,"Nurturing","✅"),
-            ("Alexis","Secondary family",0.70,"Warm","✅"),
-            ("Evelyn","Secondary family",0.65,"Playful","✅"),
-            ("James","Neighbour",0.30,"Neutral","✅"),
-        ]
-        df_npc = pd.DataFrame(npcs, columns=["Name","Role","Bond Strength","Emotion","Status"])
-        st.dataframe(df_npc, use_container_width=True, hide_index=True)
-        # Bond strength chart
-        fig = go.Figure(go.Bar(
-            x=[n[0] for n in npcs], y=[n[2] for n in npcs],
+        npcs = [("Lorraine","Primary caregiver",0.95,"Nurturing"),
+                ("Alexis","Secondary family",0.70,"Warm"),
+                ("Evelyn","Secondary family",0.65,"Playful"),
+                ("James","Neighbour",0.30,"Neutral")]
+        fig = go.Figure(go.Bar(x=[n[0] for n in npcs],y=[n[2] for n in npcs],
             marker_color=["#4ade80","#60a5fa","#c084fc","#9ca3af"],
-            text=[f"{n[2]}" for n in npcs], textposition="outside"
-        ))
-        fig.update_layout(template="plotly_dark", height=250,
+            text=[n[2] for n in npcs],textposition="outside"))
+        fig.update_layout(template="plotly_dark",height=240,
                           yaxis=dict(range=[0,1.1],title="Bond Strength"),
                           margin=dict(l=0,r=0,t=20,b=0))
-        st.plotly_chart(fig, use_container_width=True)
-        df = sheet_to_df("👥 NPC Engine")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.plotly_chart(fig,use_container_width=True)
+        st.dataframe(sheet_to_df("👥 NPC Engine"), use_container_width=True, hide_index=True)
     with tab3:
-        st.subheader("🗺️ World Data")
-        df = sheet_to_df("🗺️ World Data")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.dataframe(sheet_to_df("🗺️ World Data"), use_container_width=True, hide_index=True)
     with tab4:
-        st.subheader("🏥 Immersive Places")
-        df = sheet_to_df("🏥 Immersive Places")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(sheet_to_df("🏥 Immersive Places"), use_container_width=True, hide_index=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE: ENGINES & RUNTIME
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "⚙️ Engines & Runtime":
-    st.title("⚙️ Engines & Runtime — 20 Engine Architecture")
-
-    tab1,tab2,tab3,tab4,tab5 = st.tabs([
-        "🔗 System Connections","🔗 System Integration",
-        "⚙️ Parameters","⚙️ Runtime Patch","🚀 Architecture Audit"
-    ])
-
+    st.title("⚙️ Engines & Runtime — 24-Engine Architecture")
+    tab1,tab2,tab3,tab4 = st.tabs(["🔗 System Connections","⚙️ Parameters","⚙️ Runtime Patch","🚀 Architecture Audit"])
     with tab1:
-        st.subheader("🔗 System Connections — 24-Engine Matrix")
         engines = [
             ("EQ_DNA_01","DNA Loop Engine","1 tick","Core","✅"),
             ("EQ_ANAT_02","Anatomy Growth","100 ticks","Core","✅"),
@@ -717,203 +706,270 @@ elif page == "⚙️ Engines & Runtime":
             ("EQ_CAREER_19","Career Specialisation","1000 ticks","Phase 7","⏳" if not state['phase7'] else "✅"),
             ("EQ_LEGACY_20","Legacy Projection","2000 ticks","Phase 7","⏳" if not state['phase7'] else "✅"),
         ]
-        df_eng = pd.DataFrame(engines, columns=["Code","Engine","Fires Every","Phase","Status"])
-        st.dataframe(df_eng, use_container_width=True, hide_index=True)
-
-        # Engine fire frequency chart
-        freq_map = {"1 tick":1,"5 ticks":5,"10 ticks":10,"20 ticks":20,"50 ticks":50,
-                    "100 ticks":100,"200 ticks":200,"500 ticks":500,"1000 ticks":1000,
-                    "2000 ticks":2000,"10/100/800 ticks":100}
-        freqs = [freq_map.get(e[2],1) for e in engines]
-        fig = go.Figure(go.Bar(
-            x=[e[1] for e in engines], y=freqs,
-            marker_color=["#4ade80" if e[3]=="Core" else "#60a5fa" if "Phase 3" in e[3]
-                          else "#c084fc" if "Phase 4" in e[3] else "#f87171" for e in engines],
-            text=freqs, textposition="outside"
-        ))
-        fig.update_layout(template="plotly_dark", height=300,
-                          yaxis=dict(title="Ticks between fires", type="log"),
-                          xaxis=dict(tickangle=45),
-                          margin=dict(l=0,r=0,t=20,b=100))
-        st.plotly_chart(fig, use_container_width=True)
-
+        st.dataframe(pd.DataFrame(engines,columns=["Code","Engine","Fires","Phase","Status"]),
+                     use_container_width=True, hide_index=True)
     with tab2:
-        st.subheader("🔗 System Integration")
-        df = sheet_to_df("🔗 System Integration")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.dataframe(sheet_to_df("⚙️ Parameters"), use_container_width=True, hide_index=True)
     with tab3:
-        st.subheader("⚙️ Parameters — 41 Biological Constants")
-        df = sheet_to_df("⚙️ Parameters")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.dataframe(sheet_to_df("⚙️ Runtime Patch v0.1"), use_container_width=True, hide_index=True)
     with tab4:
-        st.subheader("⚙️ Runtime Patch v0.1")
-        df = sheet_to_df("⚙️ Runtime Patch v0.1")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
-    with tab5:
-        st.subheader("🚀 v2.0 Architecture Audit")
-        df = sheet_to_df("🚀 v2.0 Architecture Audit")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(sheet_to_df("🚀 v2.0 Architecture Audit"), use_container_width=True, hide_index=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE: PHASE 7 — WISDOM
 # ═══════════════════════════════════════════════════════════════════════════════
 elif page == "✨ Phase 7 — Wisdom":
     st.title("✨ Phase 7 — Creative Synthesis & Wisdom Engine")
-
     if not state['phase7']:
-        weeks_left = 1200 - state['week']
-        ticks_left = 96000 - tick
-        st.warning(f"⏳ Phase 7 activates at Tick 96,000 (Week 1,200). "
-                   f"Currently {ticks_left:,} ticks ({weeks_left} weeks) away. "
-                   f"Drag the tick slider to 96,000+ to activate.")
+        st.warning(f"⏳ Phase 7 activates at Tick 96,000. Currently {96000-tick:,} ticks away.")
     else:
-        st.success("🌟 PHASE 7 ACTIVE — All 4 wisdom engines online")
-
-    # Wisdom index trajectory
-    st.subheader("🦉 Wisdom Index W(t) Trajectory")
-    weeks_r = list(range(1200, 2100, 10))
-    wisdoms = [min(0.1+((w-1200)/800)*0.9, 1.0) for w in weeks_r]
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=weeks_r, y=wisdoms, fill="tozeroy",
-                              line=dict(color="#f87171",width=3), name="W(t)"))
-    if state['week'] >= 1200:
-        fig.add_vline(x=state['week'], line_dash="dash", line_color="white",
+        st.success("🌟 PHASE 7 ACTIVE")
+    weeks_r = list(range(1200,2100,10))
+    wisdoms = [min(0.1+((w-1200)/800)*0.9,1.0) for w in weeks_r]
+    fig = go.Figure(go.Scatter(x=weeks_r,y=wisdoms,fill="tozeroy",line=dict(color="#f87171",width=3)))
+    if state['week']>=1200:
+        fig.add_vline(x=state['week'],line_dash="dash",line_color="white",
                       annotation_text=f"W={state['wisdom']}")
-    fig.update_layout(template="plotly_dark", height=280,
-                      xaxis_title="Week", yaxis_title="Wisdom W(t)",
-                      yaxis=dict(range=[0,1.1]), margin=dict(l=0,r=0,t=20,b=0))
-    st.plotly_chart(fig, use_container_width=True)
-
-    tab1,tab2,tab3,tab4 = st.tabs([
-        "✨ Creative Synthesis","🦉 Wisdom Index",
-        "🎯 Career Specialisation","🌟 Legacy Projection"
-    ])
-
+    fig.update_layout(template="plotly_dark",height=240,xaxis_title="Week",
+                      yaxis_title="W(t)",yaxis=dict(range=[0,1.1]),
+                      margin=dict(l=0,r=0,t=20,b=0))
+    st.plotly_chart(fig,use_container_width=True)
+    tab1,tab2,tab3,tab4 = st.tabs(["✨ Creative","🦉 Wisdom","🎯 Career","🌟 Legacy"])
     with tab1:
-        st.subheader("✨ EQ_CREAT_17 — Creative Synthesis Engine")
-        st.code("C_new(t) = α_c·(M_episodic ⊕ M_semantic) + β_c·(P_sim ⊗ S_skills) + γ_c·Noise_stochastic",
-                language="text")
-        col1,col2,col3 = st.columns(3)
-        col1.metric("α_c (memory blend)", "0.4")
-        col2.metric("β_c (skill-prediction)", "0.4")
-        col3.metric("γ_c (stochastic noise)", "0.2")
-        # Idea candidate table
-        ideas = [
-            ("IDEA_001","Novel tool use combining reach + object permanence",0.82,0.74,0.91,1),
-            ("IDEA_002","Social strategy: delay gratification for NPC reward",0.76,0.68,0.88,2),
-            ("IDEA_003","Spatial shortcut via scene graph recombination",0.71,0.85,0.79,3),
-            ("IDEA_004","Emotional regulation via predictive reframing",0.65,0.72,0.95,4),
-            ("IDEA_005","Language metaphor: abstract concept from concrete",0.88,0.55,0.83,5),
-        ]
-        df_ideas = pd.DataFrame(ideas, columns=["ID","Description","Novelty","Feasibility","Cultural Align","Rank"])
-        st.dataframe(df_ideas, use_container_width=True, hide_index=True)
-        df = sheet_to_df("✨ Creative Synthesis Engine")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.dataframe(sheet_to_df("✨ Creative Synthesis Engine"), use_container_width=True, hide_index=True)
     with tab2:
-        st.subheader("🦉 EQ_WISDOM_18 — Wisdom Index Engine")
-        st.code("W(t+1) = W(t) + η_w·[λ1·Consequence_50yr + λ2·EthicalWeight + λ3·EmpathyIndex − λ4·ImpulseDrive]",
-                language="text")
-        # Decision modulation
-        w = state['wisdom']
-        decision_data = {
-            "Decision Type": ["Goal selection","Emotional regulation","Social decisions","Creative filtering","Career choices"],
-            "Current Behaviour": [
-                "Long-term consequence dominant" if w>0.6 else ("Balanced" if w>0.3 else "Short-term reward"),
-                "Fully regulated, compassionate" if w>0.6 else ("Partially regulated" if w>0.3 else "Reactive, impulsive"),
-                "Altruistic, legacy-aware" if w>0.6 else ("Reciprocal fairness" if w>0.3 else "Self-interest dominant"),
-                "Ethics + consequence filtered" if w>0.6 else ("Feasibility-filtered" if w>0.3 else "All ideas pursued"),
-                "Legacy-aligned specialisation" if w>0.6 else ("Skill-opportunity match" if w>0.3 else "Immediate reward"),
-            ]
-        }
-        st.dataframe(pd.DataFrame(decision_data), use_container_width=True, hide_index=True)
-        df = sheet_to_df("🦉 Wisdom Index Engine")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.dataframe(sheet_to_df("🦉 Wisdom Index Engine"), use_container_width=True, hide_index=True)
     with tab3:
-        st.subheader("🎯 EQ_CAREER_19 — Career Specialisation Engine")
-        st.code("Career(t+1) = Career(t) + η_car·[SkillVector · OpportunityMatrix · IdentityVector]",
-                language="text")
-        # 22-dim skill radar
-        skills = ["Language","Logic","Spatial","Social ToM","Emotion Reg","Motor",
-                  "Creative","Ethical","Long-term Plan","Memory","Pattern","Causal",
-                  "Numerical","Narrative","Attention","Sensory","Predictive","Cultural",
-                  "Self-Reg","Curiosity","Empathy","Legacy"]
+        skills = ["Language","Logic","Spatial","Social","Emotion","Motor","Creative","Ethical",
+                  "Planning","Memory","Pattern","Causal","Numerical","Narrative","Attention",
+                  "Sensory","Predictive","Cultural","Self-Reg","Curiosity","Empathy","Legacy"]
         current = [0.72,0.68,0.81,0.65,0.59,0.88,0.45,0.52,0.41,0.77,0.74,0.63,
                    0.55,0.69,0.71,0.84,0.48,0.61,0.57,0.79,0.66,0.38]
         target  = [0.95,0.90,0.85,0.95,0.90,0.90,0.85,0.90,0.88,0.85,0.88,0.90,
                    0.85,0.88,0.90,0.88,0.90,0.88,0.92,0.85,0.95,0.90]
         fig = go.Figure()
-        fig.add_trace(go.Scatterpolar(r=current+[current[0]], theta=skills+[skills[0]],
-            fill="toself", name="Current Mastery", line_color="#60a5fa"))
-        fig.add_trace(go.Scatterpolar(r=target+[target[0]], theta=skills+[skills[0]],
-            fill="toself", name="Target", line_color="#4ade80", opacity=0.3))
-        fig.update_layout(template="plotly_dark", height=400,
+        fig.add_trace(go.Scatterpolar(r=current+[current[0]],theta=skills+[skills[0]],
+            fill="toself",name="Current",line_color="#60a5fa"))
+        fig.add_trace(go.Scatterpolar(r=target+[target[0]],theta=skills+[skills[0]],
+            fill="toself",name="Target",line_color="#4ade80",opacity=0.3))
+        fig.update_layout(template="plotly_dark",height=380,
                           polar=dict(radialaxis=dict(range=[0,1])),
                           margin=dict(l=0,r=0,t=20,b=0))
-        st.plotly_chart(fig, use_container_width=True)
-        df = sheet_to_df("🎯 Career Specialisation Engine")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
+        st.plotly_chart(fig,use_container_width=True)
+        st.dataframe(sheet_to_df("🎯 Career Specialisation Engine"), use_container_width=True, hide_index=True)
     with tab4:
-        st.subheader("🌟 EQ_LEGACY_20 — Legacy Projection Engine")
-        st.code("L(t+1) = L(t) + η_l·[Impact_direct + Impact_indirect + CulturalTransmission − Entropy_f·L(t)]",
-                language="text")
-        # Legacy curve
-        weeks_r = [1200,1300,1400,1600,1800,2000,2400,3000]
+        weeks_l = [1200,1300,1400,1600,1800,2000,2400,3000]
         legacy  = [0.0,0.08,0.19,0.41,0.67,0.94,1.52,2.31]
-        rememb  = [0.01,0.05,0.12,0.28,0.45,0.61,0.78,0.89]
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=weeks_r, y=legacy, name="Legacy L(t)",
-                                  fill="tozeroy", line=dict(color="#facc15",width=2)))
-        fig.add_trace(go.Scatter(x=weeks_r, y=rememb, name="Remembrance Prob",
-                                  line=dict(color="#c084fc",width=2,dash="dot"), yaxis="y2"))
-        fig.update_layout(template="plotly_dark", height=280,
-                          xaxis_title="Week", yaxis=dict(title="L(t)"),
-                          yaxis2=dict(title="Remembrance", overlaying="y", side="right"),
-                          legend=dict(orientation="h",y=1.1),
+        fig = go.Figure(go.Scatter(x=weeks_l,y=legacy,fill="tozeroy",line=dict(color="#facc15",width=2)))
+        fig.update_layout(template="plotly_dark",height=220,xaxis_title="Week",
+                          yaxis_title="L(t)",margin=dict(l=0,r=0,t=20,b=0))
+        st.plotly_chart(fig,use_container_width=True)
+        st.dataframe(sheet_to_df("🌟 Legacy Projection Engine"), use_container_width=True, hide_index=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: PHASE 8 — AGI
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "🚀 Phase 8 — AGI":
+    st.title("🚀 Phase 8 — AGI Architecture")
+    col1,col2,col3 = st.columns(3)
+    col1.metric("v1.0 Overall","54%")
+    col2.metric("Phase 8 Target","76%","+22%")
+    col3.metric("v2.0 Target","~90%")
+    domains = ["Biological body","Neural dynamics","Language & grounding","Cognitive architecture",
+               "Energy & metabolism","Memory systems","Perception & vision","Motor intelligence",
+               "Consciousness & self","Social & ToM","World & continuity","Temporal cognition"]
+    v1_s  = [85,80,65,60,60,55,55,50,50,30,25,20]
+    ph8_s = [88,83,78,80,62,65,82,78,72,68,70,45]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(name="v1.0",x=v1_s,y=domains,orientation="h",
+                          marker_color="#374151",text=[f"{s}%" for s in v1_s],textposition="inside"))
+    fig.add_trace(go.Bar(name="Phase 8",x=ph8_s,y=domains,orientation="h",
+                          marker_color="#4ade80",text=[f"{s}%" for s in ph8_s],textposition="outside"))
+    fig.update_layout(template="plotly_dark",height=400,barmode="overlay",
+                      xaxis=dict(range=[0,100],title="Completeness %"),
+                      margin=dict(l=0,r=0,t=20,b=0))
+    st.plotly_chart(fig,use_container_width=True)
+    tab1,tab2,tab3,tab4,tab5,tab6 = st.tabs(["👁️ Vision","🦾 Motor","🗺️ Planning","🤝 Social","🪞 Meta","🌐 World Model"])
+    with tab1:
+        st.dataframe(sheet_to_df("👁️ Vision System (V1)"), use_container_width=True, hide_index=True)
+    with tab2:
+        st.dataframe(sheet_to_df("🦾 Motor Intelligence (M1)"), use_container_width=True, hide_index=True)
+    with tab3:
+        stages_p = [1,2,3,4,5,7]; depths = [1,3,5,10,20,50]
+        fig = go.Figure(go.Bar(x=[f"Stage {s}" for s in stages_p],y=depths,
+                                marker_color=["#374151","#1e3a5f","#1a3a2a","#3a1a3a","#7c2d12","#7f1d1d"],
+                                text=depths,textposition="outside"))
+        fig.update_layout(template="plotly_dark",height=220,yaxis_title="Max Planning Depth",
                           margin=dict(l=0,r=0,t=20,b=0))
-        st.plotly_chart(fig, use_container_width=True)
-        df = sheet_to_df("🌟 Legacy Projection Engine")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.plotly_chart(fig,use_container_width=True)
+        st.dataframe(sheet_to_df("🗺️ Planning Engine (P2)"), use_container_width=True, hide_index=True)
+    with tab4:
+        npcs = {"NPC":["Lorraine","Alexis","Evelyn","James"],
+                "Bond":[0.95,0.70,0.65,0.30],
+                "Prediction Accuracy":["85%","72%","68%","45%"]}
+        st.dataframe(pd.DataFrame(npcs), use_container_width=True, hide_index=True)
+        st.dataframe(sheet_to_df("🤝 Social Cognition (S2)"), use_container_width=True, hide_index=True)
+    with tab5:
+        cap_domains = ["Motor","Speech","Social","Planning","Language","Vision"]
+        cap_vals    = [0.72,0.68,0.61,0.55,0.63,0.71]
+        fig = go.Figure(go.Scatterpolar(r=cap_vals+[cap_vals[0]],theta=cap_domains+[cap_domains[0]],
+            fill="toself",line_color="#60a5fa"))
+        fig.update_layout(template="plotly_dark",height=300,
+                          polar=dict(radialaxis=dict(range=[0,1])),
+                          margin=dict(l=0,r=0,t=20,b=0))
+        st.plotly_chart(fig,use_container_width=True)
+        st.dataframe(sheet_to_df("🪞 Meta-Cognition (R2)"), use_container_width=True, hide_index=True)
+    with tab6:
+        st.dataframe(sheet_to_df("🌐 World Model Integration (W2)"), use_container_width=True, hide_index=True)
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: SENSORS (Camera / Mic / Speaker)
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "📷 Sensors (Camera/Mic)":
+    st.title("📷 Sensors — Camera · Microphone · Speaker")
+    st.caption("Live sensor input feeds directly into A7DO's perception engines")
 
+    tab1, tab2, tab3 = st.tabs(["📷 Camera → Vision V1", "🎤 Microphone → Speech", "🔊 Speaker Output"])
+
+    with tab1:
+        st.subheader("📷 Camera — Live Visual Input → Vision System V1")
+        st.info("Camera feed simulates A7DO's retinal input I(x,y,t). Objects detected feed into the Vision System (V1) pipeline.")
+        img_file = st.camera_input("📷 Capture frame (simulates A7DO retinal input)")
+        if img_file:
+            st.image(img_file, caption="Captured frame → I(x,y,t) retinal input", use_container_width=True)
+            st.success("✅ Frame captured — in a full runtime this would feed into V.2 Feature Maps → V.3 Object Segmentation → V.4 Semantic Embedding")
+            col1,col2,col3 = st.columns(3)
+            col1.metric("V.1 Retinal Input","Active")
+            col2.metric("V.2 Feature Maps","Processing")
+            col3.metric("V.3 Object Tracking","Pending")
+            st.markdown("""
+**Pipeline triggered:**
+1. `I(x,y,t)` → Sobel edge detection → motion detection
+2. Salience map `S(x,y)` computed
+3. Object segmentation → `obj_k = {pos, vel, size, category}`
+4. Visual embedding `embed_k = CNN(crop_k)`
+5. Novelty score `novelty_k = 1 − max_j sim(embed_k, embed_j)`
+6. Unknown objects → curiosity spike → Web-Hook query
+""")
+        else:
+            st.markdown("""
+**How camera feeds into A7DO:**
+- Each frame becomes `I(x,y,t)` — the retinal input
+- Feature maps extracted: edges, motion, colour, depth, salience
+- Objects segmented and tracked with Kalman filter
+- Visual embeddings computed → word-object binding
+- Novel objects trigger curiosity drive → Web-Hook query
+""")
+
+    with tab2:
+        st.subheader("🎤 Microphone — Live Audio Input → Speech Engine")
+        st.info("Microphone input simulates A7DO's auditory perception. Heard words feed into the Word Learning Engine.")
+        audio_file = st.audio_input("🎤 Record audio (simulates A7DO auditory input)")
+        if audio_file:
+            st.audio(audio_file)
+            st.success("✅ Audio captured — in a full runtime this would feed into phoneme detection → word recognition → confidence update")
+            col1,col2,col3 = st.columns(3)
+            col1.metric("Auditory Input","Active")
+            col2.metric("Phoneme Detection","Processing")
+            col3.metric("Word Recognition","Pending")
+            st.markdown("""
+**Pipeline triggered:**
+1. Audio → FFT → Mel filterbank → acoustic signature `A_sig ∈ ℝ⁶⁴`
+2. Phoneme classifier → phoneme sequence `P`
+3. Word lookup in semantic memory
+4. If `conf(word) < ε=0.3` → Web-Hook query triggered
+5. Confidence update: `conf(t+1) = conf(t) + η_w · r_word`
+6. Word-object binding updated: `B(word,obj) = α·visual + β·motor + γ·emotion`
+""")
+            # Simulated phoneme display
+            st.subheader("Simulated Phoneme Analysis")
+            import random; random.seed(42)
+            phonemes = ["/m/","/ʌ/","/m/","/ə/"]
+            confs    = [0.92,0.87,0.94,0.81]
+            fig = go.Figure(go.Bar(x=phonemes,y=confs,
+                marker_color=["#4ade80" if c>0.8 else "#facc15" for c in confs],
+                text=[f"{c:.2f}" for c in confs],textposition="outside"))
+            fig.update_layout(template="plotly_dark",height=220,
+                              yaxis=dict(range=[0,1.1],title="Confidence"),
+                              xaxis_title="Detected Phonemes",
+                              margin=dict(l=0,r=0,t=20,b=0))
+            st.plotly_chart(fig,use_container_width=True)
+        else:
+            st.markdown("""
+**How microphone feeds into A7DO:**
+- Audio → FFT → Mel filterbank → 64-dim acoustic signature
+- Phoneme classifier detects phoneme sequence
+- Word recognition against semantic memory
+- Unknown words (conf < 0.3) trigger Web-Hook query
+- Heard words update word confidence scores
+- NPC speech triggers social cognition update
+""")
+
+    with tab3:
+        st.subheader("🔊 Speaker — A7DO Speech Output")
+        st.info("A7DO generates speech via the Speech Production Engine. Current capability depends on motor stage and developmental week.")
+        speech_stages = {1:"Crying/vegetative",2:"Cooing (vowels)",3:"Babbling (CV syllables)",
+                         4:"Proto-words","5a":"First words (CURRENT)" if state['week']>=100 else "Babbling"}
+        motor_s = min(state['motor'],5)
+        st.success(f"**Current speech capability (Motor Stage {motor_s}, Week {state['week']}):** "
+                   f"{speech_stages.get(motor_s, speech_stages.get(str(motor_s)+'a','Crying'))}")
+
+        col1,col2 = st.columns(2)
+        with col1:
+            st.subheader("Generate Speech")
+            utterance = st.text_input("Enter utterance for A7DO to 'speak':", "mama")
+            if st.button("🔊 Synthesise", use_container_width=True):
+                st.success(f"A7DO says: **'{utterance}'**")
+                st.markdown(f"""
+**Speech production pipeline for '{utterance}':**
+1. Intent → communicative intent vector (EQ_CONS_10)
+2. Word retrieval: `conf('{utterance}') = {0.95 if utterance=='mama' else 0.6:.2f}`
+3. Phoneme sequence: `{' '.join(['/m/','/ʌ/','/m/','/ə/'] if utterance=='mama' else ['/'+c+'/' for c in utterance[:4]])}`
+4. Vocal tract trajectory: `θ_tongue, θ_jaw, P_sub, f_0`
+5. Acoustic output: `audio(t) = H(f) * s(t)`
+6. Emotional modulation: `f_0 = {200*(1+0.3*state['C']):.0f} Hz` (C={state['C']})
+""")
+        with col2:
+            st.subheader("Vocal Tract State")
+            vt_state = {"Variable":["x_tongue","y_tongue","θ_jaw","r_lip","P_sub","f_0","I_vocal"],
+                        "Value":[0.0,-0.5,0.5,0.0,3.2,f"{200*(1+0.3*state['C']):.0f} Hz",0.7],
+                        "Status":["Active","Active","Active","Active","Active","Active","Active"]}
+            st.dataframe(pd.DataFrame(vt_state), use_container_width=True, hide_index=True)
+
+        st.subheader("Speech Developmental Milestones")
+        milestones = {"Week":[0,40,52,80,100,125,156,208,312,624],
+                      "Stage":["Prenatal","Newborn","Cooing","Babbling","Variegated","First words","Two-word","Sentences","Complex","Adult-like"],
+                      "Example":["—","Waaah","Aaah","Bababa","Mama","mama, no, up","more ball","I want ball","Where is my ball?","Full speech"],
+                      "Status":["✅" if state['week']>=w else "⏳" for w in [0,40,52,80,100,125,156,208,312,624]]}
+        st.dataframe(pd.DataFrame(milestones), use_container_width=True, hide_index=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: ALL SHEETS EXPLORER
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "📊 All Sheets Explorer":
     st.title("📊 All Sheets Explorer")
-    st.caption("Browse all 36 sheets from A7DO_DNA_Master_v5_FINAL.xlsx")
-
-    wb = load_workbook()
-    sheet_names = wb.sheetnames
-
+    st.caption("Browse all 47 sheets from A7DO_DNA_Master_v5_FINAL.xlsx")
+    sheet_names = get_sheet_names()
     selected = st.selectbox("Select sheet", sheet_names)
     df = sheet_to_df(selected)
-
     col1,col2,col3 = st.columns(3)
     col1.metric("Rows", len(df))
     col2.metric("Columns", len(df.columns))
-    col3.metric("Non-empty cells", df.notna().sum().sum())
-
+    col3.metric("Non-empty cells", int(df.notna().sum().sum()))
     search = st.text_input("🔍 Search within sheet", "")
     if search:
         mask = df.apply(lambda col: col.astype(str).str.contains(search, case=False, na=False))
         df = df[mask.any(axis=1)]
         st.caption(f"{len(df)} rows matching '{search}'")
-
     st.dataframe(df, use_container_width=True, hide_index=True)
-
-    # Download
     csv = df.to_csv(index=False)
-    st.download_button(f"⬇️ Download {selected} as CSV",
-                       data=csv, file_name=f"{selected}.csv", mime="text/csv")
+    st.download_button(f"⬇️ Download as CSV", data=csv,
+                       file_name=f"{selected}.csv", mime="text/csv")
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.divider()
 st.markdown(
-    "<div style='text-align:center;color:#6b7280;font-size:0.8rem'>"
-    "🧬 A7DO Genesis Mind · v5 FINAL · 36 sheets · 337 formulas · 0 errors · "
-    "28 May 2026 · <em>This is the organism. There will be no more originals — only descendants.</em>"
-    "</div>",
-    unsafe_allow_html=True
-)
+    "<div style='text-align:center;color:#6b7280;font-size:0.78rem'>"
+    "🧬 A7DO Genesis Mind · v5 FINAL · 47 sheets · 337 formulas · 0 errors · "
+    "<em>This is the organism. There will be no more originals — only descendants.</em>"
+    "</div>", unsafe_allow_html=True)
