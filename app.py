@@ -135,7 +135,7 @@ if "auto_speed" not in st.session_state:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🧬 A7DO Genesis Mind")
-    st.markdown("**v5 FINAL · 47 sheets · 337 formulas**")
+    st.markdown("**v5 FINAL · 49 sheets · 337 formulas**")
     st.divider()
 
     # Tick slider
@@ -158,6 +158,8 @@ with st.sidebar:
         "🗣️ Word Learning Engine",
         "🔊 Speech Production",
         "🌐 Web-Hook Learning",
+        "🌍 Phase 5 — Cultural Layer",
+        "🪪 Phase 6 — Identity Layer",
         "🌍 World & Social",
         "⚙️ Engines & Runtime",
         "✨ Phase 7 — Wisdom",
@@ -332,6 +334,7 @@ if page == "🏠 Master Dashboard":
         "🦿 Movement Engine":"Phase 3",
         "🌍 World Systems":"World","🗺️ World Data":"World","📐 World & Space":"World",
         "🏥 Immersive Places":"World","👥 NPC Engine":"Social",
+        "🌍 Phase 5 — Cultural Layer":"Phase 5","🪪 Phase 6 — Identity Layer":"Phase 6",
         "🔗 System Connections":"Meta","🔗 System Integration":"Meta",
         "🚀 v2.0 Architecture Audit":"Meta","⚙️ Runtime Patch v0.1":"Runtime",
         "🔄 Learning Loop":"Learning Loop",
@@ -346,7 +349,7 @@ if page == "🏠 Master Dashboard":
     }
     cat_cls = {"Core":"ph-core","Biology":"ph-bio","Cognition":"ph-cog","Phase 4":"ph-cog",
                "Phase 3":"ph-p3","World":"ph-world","Social":"ph-world","Meta":"ph-meta",
-               "Runtime":"ph-meta","Learning Loop":"ph-loop","Phase 7":"ph-p7","Phase 8":"ph-p8"}
+               "Runtime":"ph-meta","Learning Loop":"ph-loop","Phase 7":"ph-p7","Phase 8":"ph-p8","Phase 5":"ph-world","Phase 6":"ph-loop"}
     badges = "".join(f'<span class="phase-badge {cat_cls.get(cat,"ph-core")}">{s}</span>'
                      for s,cat in sheet_cats.items())
     st.markdown(badges, unsafe_allow_html=True)
@@ -640,8 +643,7 @@ elif page == "🌐 Web-Hook Learning":
 # ═══════════════════════════════════════════════════════════════════════════════
 # PAGE: WORLD & SOCIAL
 # ═══════════════════════════════════════════════════════════════════════════════
-elif page == "🌍 World & Social":
-    st.title("🌍 World & Social — BeenFore City")
+
     tab1,tab2,tab3,tab4 = st.tabs(["🌍 World Systems","👥 NPC Engine","🗺️ World Data","🏥 Immersive Places"])
     with tab1:
         locs = [("Hospital",0,0,"#f87171"),("H8 Home",1090,880,"#4ade80"),
