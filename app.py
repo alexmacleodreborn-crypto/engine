@@ -128,11 +128,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PAGE: MISSION CONTROL
 # ═══════════════════════════════════════════════════════════════════════════════
 if page == "🏠 Mission Control":
     st.title("🧬 A7DO Genesis Mind — Mission Control")
@@ -884,10 +880,7 @@ elif page == "✨ Phase 7 — Wisdom":
         df = sheet_to_df("🌟 Legacy Projection Engine")
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PAGE: ALL SHEETS EXPLORER
-# ═══════════════════════════════════════════════════════════════════════════════
-elif page == "📊 All Sheets Explorer":
+
     st.title("📊 All Sheets Explorer")
     st.caption("Browse all 36 sheets from A7DO_DNA_Master_v5_FINAL.xlsx")
 
